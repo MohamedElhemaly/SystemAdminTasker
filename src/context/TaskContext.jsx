@@ -482,9 +482,22 @@ export const TaskProvider = ({ children }) => {
       assignedTo = currentUserId;
     }
 
-    const defaultList = lists.find(l => !l.is_smart) || lists[0];
-    const targetListId = taskData.list_id || (selectedListId.startsWith('list-') && !lists.find(l => l.id === selectedListId)?.is_smart ? selectedListId : defaultList.id);
-    const targetList = lists.find(l => l.id === targetListId);
+    const defaultList = lists.find(l => !l.is_smart);
+    
+    let rawTargetId = taskData.list_id || selectedListId;
+    let targetListId = rawTargetId;
+    
+    // If the target is a smart list (e.g. 'list-inbox'), try to fall back to the first user-created list, otherwise use null
+    if (rawTargetId.startsWith('list-') && lists.find(l => l.id === rawTargetId)?.is_smart) {
+      targetListId = defaultList ? defaultList.id : null;
+    }
+    
+    // Final safety check: no string starting with 'list-' should be passed to Supabase UUID column
+    if (targetListId && targetListId.startsWith('list-')) {
+      targetListId = null;
+    }
+
+    const targetList = targetListId ? lists.find(l => l.id === targetListId) : null;
     
     const isTeamTask = taskData.task_type === 'team' || Boolean(taskData.tagged_user_ids?.length);
     let newAcks = [];
