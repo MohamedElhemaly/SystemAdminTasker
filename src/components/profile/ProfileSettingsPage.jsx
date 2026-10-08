@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { BUILTIN_AVATARS, getAvatarUrl } from '../../lib/avatars';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { 
   User, Shield, Check, Mail, ArrowLeft, Save, 
-  Lock, Fingerprint, LogOut, Clock,
+  Lock, Fingerprint, LogOut, Clock, Trash2,
   CheckCircle2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -74,6 +75,21 @@ export const ProfileSettingsPage = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
+  };
+
+  const handleDeleteMyAccount = async () => {
+    if (!window.confirm("Are you absolutely sure you want to permanently delete your account? All your data will be erased and this cannot be undone.")) return;
+    try {
+      if (!isDemoMode) {
+        const { error } = await supabase.rpc('delete_user_account', { target_user_id: user.id });
+        if (error) throw error;
+      }
+      toast.success("Account permanently deleted.");
+      await signOut();
+      navigate('/login');
+    } catch (err) {
+      toast.error("Failed to delete account: " + err.message);
+    }
   };
 
   const getRoleBadge = (role) => {
@@ -330,18 +346,28 @@ export const ProfileSettingsPage = () => {
             <LogOut className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="text-xs font-bold text-red-300">Sign Out from All Devices</h4>
+            <h4 className="text-xs font-bold text-red-300">Danger Zone</h4>
             <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed mb-3">
-              Signing out will terminate your session globally and clear all locally-cached data. 
-              No trace of your data will remain on this device.
+              Signing out will terminate your session globally. Deleting your account will permanently erase your profile and all associated data.
             </p>
-            <button
-              id="profile-signout-global-btn"
-              onClick={handleSignOut}
-              className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/25 transition-all"
-            >
-              Sign Out & Clear All Data
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                id="profile-signout-global-btn"
+                onClick={handleSignOut}
+                className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/25 transition-all flex items-center gap-2"
+              >
+                Sign Out & Clear All Data
+              </button>
+              
+              <button
+                id="profile-delete-account-btn"
+                onClick={handleDeleteMyAccount}
+                className="px-4 py-2 rounded-xl bg-red-900/40 border border-red-500/50 text-red-300 text-xs font-semibold hover:bg-red-800/60 transition-all flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete My Account
+              </button>
+            </div>
           </div>
         </div>
       </div>

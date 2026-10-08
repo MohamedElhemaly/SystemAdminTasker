@@ -5,7 +5,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { getAvatarUrl } from '../../lib/avatars';
 import { 
   ShieldAlert, Users, Tag, Plus, Trash2, CheckCircle2, 
-  ShieldCheck, Lock, UserCheck, Settings, Folder, FileType
+  ShieldCheck, Lock, UserCheck, Settings, Folder, FileType, Bookmark
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -27,10 +27,12 @@ export const AdminDashboard = () => {
     deleteTag,
     lists,
     createList,
-    deleteList
+    deleteList,
+    allTasks,
+    refreshTasks
   } = useTasks();
 
-  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'priorities' | 'statuses' | 'task_types' | 'tags' | 'lists'
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'priorities' | 'statuses' | 'task_types' | 'tags' | 'lists' | 'acks'
   
   // Form States
   const [priorityName, setPriorityName] = useState('');
@@ -50,6 +52,9 @@ export const AdminDashboard = () => {
 
   const [listName, setListName] = useState('');
   const [listColor, setListColor] = useState('#10b981');
+
+  const [ackTaskId, setAckTaskId] = useState('');
+  const [ackUserId, setAckUserId] = useState('');
 
   const currentRole = profile?.role || 'manager';
 
@@ -90,6 +95,71 @@ export const AdminDashboard = () => {
       toast.error('Failed to update role: ' + err.message);
     }
   };
+
+  const handleDeleteUser = async (targetUserId) => {
+    if (!window.confirm("Are you absolutely sure you want to completely delete this user? This action is irreversible.")) return;
+    try {
+      if (isSupabaseConfigured() && !isDemoMode) {
+        const { error } = await supabase.rpc('delete_user_account', { target_user_id: targetUserId });
+        if (error) throw error;
+      }
+      toast.success("User deleted successfully!");
+      if (refreshTasks) refreshTasks();
+    } catch (err) {
+      toast.error('Failed to delete user: ' + err.message);
+    }
+  };
+
+  const handleAddAck = async (e) => {
+    e.preventDefault();
+    if (!ackTaskId || !ackUserId) return;
+    try {
+      if (isSupabaseConfigured() && !isDemoMode) {
+        const { error } = await supabase.from('task_acknowledgements').insert({
+          task_id: ackTaskId,
+          user_id: ackUserId,
+          is_acknowledged: false
+        });
+        if (error) throw error;
+      }
+      toast.success("Member requirement added!");
+      setAckTaskId('');
+      setAckUserId('');
+      if (refreshTasks) refreshTasks();
+    } catch (err) {
+      toast.error('Failed to add requirement: ' + err.message);
+    }
+  };
+
+  const handleDeleteAck = async (ackId) => {
+    try {
+      if (isSupabaseConfigured() && !isDemoMode) {
+        const { error } = await supabase.from('task_acknowledgements').delete().eq('id', ackId);
+        if (error) throw error;
+      }
+      toast.success("Requirement deleted!");
+      if (refreshTasks) refreshTasks();
+    } catch (err) {
+      toast.error('Failed to delete requirement: ' + err.message);
+    }
+  };
+
+  const handleToggleAckStatus = async (ackId, currentStatus) => {
+    try {
+      if (isSupabaseConfigured() && !isDemoMode) {
+        const { error } = await supabase.from('task_acknowledgements').update({
+          is_acknowledged: !currentStatus,
+          acknowledged_at: !currentStatus ? new Date().toISOString() : null
+        }).eq('id', ackId);
+        if (error) throw error;
+      }
+      toast.success("Status updated!");
+      if (refreshTasks) refreshTasks();
+    } catch (err) {
+      toast.error('Failed to update status: ' + err.message);
+    }
+  };
+
 
   const handleCreatePriority = async (e) => {
     e.preventDefault();
@@ -213,6 +283,16 @@ export const AdminDashboard = () => {
             <Folder className="w-4 h-4" />
             <span>System Lists ({lists.filter(l => !l.is_smart).length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('acks')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'acks' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Bookmark className="w-4 h-4" />
+            <span>Member Tags</span>
+          </button>
         </div>
 
         {/* Tab 1: Users & RBAC Roles */}
@@ -231,6 +311,7 @@ export const AdminDashboard = () => {
                     <th className="p-3">Email</th>
                     <th className="p-3">Current Role</th>
                     <th className="p-3 text-right">Change Role</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
@@ -266,6 +347,15 @@ export const AdminDashboard = () => {
                           <option value="sub_manager">Sub-Manager (نائب المدير)</option>
                           <option value="member">Member (عضو)</option>
                         </select>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 rounded-lg border border-red-500/30 transition-all"
+                          title="Delete Account"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -583,6 +673,91 @@ export const AdminDashboard = () => {
                   No custom lists created yet. Use the form above to add your first folder or list.
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 7: Member Tags (Acknowledgements) */}
+        {activeTab === 'acks' && (
+          <div className="space-y-5">
+            <form onSubmit={handleAddAck} className="p-4 rounded-2xl bg-[#1f1f23] border border-slate-800 shadow-xl space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-400" />
+                <span>Assign Member Tag Requirement</span>
+              </h3>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <select
+                  required
+                  value={ackTaskId}
+                  onChange={(e) => setAckTaskId(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-[#28292f] border border-slate-700 rounded-xl text-xs text-white focus:outline-none"
+                >
+                  <option value="">-- Select Task --</option>
+                  {allTasks?.map(t => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+                <select
+                  required
+                  value={ackUserId}
+                  onChange={(e) => setAckUserId(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-[#28292f] border border-slate-700 rounded-xl text-xs text-white focus:outline-none"
+                >
+                  <option value="">-- Select User --</option>
+                  {allUsers?.map(u => (
+                    <option key={u.id} value={u.id}>{u.full_name || u.email}</option>
+                  ))}
+                </select>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-500/20">
+                  Assign Tag
+                </button>
+              </div>
+            </form>
+
+            <div className="p-4 rounded-2xl bg-[#1f1f23] border border-slate-800 shadow-xl overflow-x-auto">
+              <table className="w-full text-xs text-left text-slate-300">
+                <thead className="text-[11px] uppercase bg-[#28292f] text-slate-400 border-b border-slate-700">
+                  <tr>
+                    <th className="p-3">Task</th>
+                    <th className="p-3">Required Member</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {allTasks?.flatMap(t => 
+                    (t.task_acknowledgements || []).map(ack => (
+                      <tr key={ack.id} className="hover:bg-[#25262e] transition-colors">
+                        <td className="p-3 font-medium text-white max-w-xs truncate" title={t.title}>{t.title}</td>
+                        <td className="p-3">{ack.full_name || 'Member'}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${
+                            ack.is_acknowledged ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {ack.is_acknowledged ? 'Acknowledged' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleToggleAckStatus(ack.id, ack.is_acknowledged)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all"
+                            title="Toggle Status"
+                          >
+                            <CheckCircle2 className={`w-3.5 h-3.5 ${ack.is_acknowledged ? 'text-emerald-400' : 'text-slate-400'}`} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAck(ack.id)}
+                            className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg border border-red-500/30 transition-all"
+                            title="Remove Requirement"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

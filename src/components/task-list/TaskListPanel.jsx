@@ -2,24 +2,79 @@ import React, { useState } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { QuickAddTask } from './QuickAddTask';
 import { TaskItem } from './TaskItem';
+import { parseSearchQuery } from '../../lib/searchParser';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Search, 
-  Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight
+  Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw
 } from 'lucide-react';
 import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 
 export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
-  const { tasks, lists, selectedListId } = useTasks();
+  const { tasks, lists, selectedListId, refreshTasks, loading, allUsers } = useTasks();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCompleted, setShowCompleted] = useState(true);
 
   const currentList = lists.find(l => l.id === selectedListId) || lists[0];
 
-  // Filter tasks by search query
-  const filteredBySearch = tasks.filter(t => 
-    t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter tasks by smart search query
+  const parsedSearch = parseSearchQuery(searchQuery);
+  const filteredBySearch = tasks.filter(t => {
+    // 1. General text
+    if (parsedSearch.text) {
+      const searchLower = parsedSearch.text.toLowerCase();
+      const titleMatch = t.title?.toLowerCase().includes(searchLower);
+      const descMatch = t.description?.toLowerCase().includes(searchLower);
+      if (!titleMatch && !descMatch) return false;
+    }
+
+    // 2. Tags
+    if (parsedSearch.tags.length > 0) {
+      const hasAllTags = parsedSearch.tags.every(searchTag => 
+        t.tags?.some(taskTag => taskTag.name.toLowerCase().includes(searchTag.toLowerCase()))
+      );
+      if (!hasAllTags) return false;
+    }
+
+    // 3. Users (Creator, Assignee, Acknowledgers)
+    if (parsedSearch.users.length > 0) {
+      const creator = allUsers?.find(u => u.id === t.created_by);
+      const assignee = allUsers?.find(u => u.id === t.assigned_to);
+      const acks = t.task_acknowledgements || [];
+      
+      const hasAllUsers = parsedSearch.users.every(searchUser => {
+        const uLower = searchUser.toLowerCase();
+        return (
+          creator?.full_name?.toLowerCase().includes(uLower) ||
+          creator?.email?.toLowerCase().includes(uLower) ||
+          assignee?.full_name?.toLowerCase().includes(uLower) ||
+          assignee?.email?.toLowerCase().includes(uLower) ||
+          acks.some(ack => ack.full_name?.toLowerCase().includes(uLower))
+        );
+      });
+      if (!hasAllUsers) return false;
+    }
+
+    // 4. Dates
+    if (parsedSearch.dates.length > 0) {
+      const taskDate = t.due_date ? parseISO(t.due_date) : null;
+      const hasDateMatch = parsedSearch.dates.every(searchDate => {
+        if (!taskDate) return false;
+        const dLower = searchDate.toLowerCase();
+        if (dLower === 'اليوم' || dLower === 'today') return isToday(taskDate);
+        if (dLower === 'غدا' || dLower === 'غداً' || dLower === 'tomorrow') return isTomorrow(taskDate);
+        
+        try {
+          const specificDate = parseISO(searchDate);
+          return taskDate.toISOString().split('T')[0] === specificDate.toISOString().split('T')[0];
+        } catch {
+          return false;
+        }
+      });
+      if (!hasDateMatch) return false;
+    }
+
+    return true;
+  });
 
   const uncompletedTasks = filteredBySearch.filter(t => !t.is_completed);
   const completedTasks = filteredBySearch.filter(t => t.is_completed);
@@ -92,6 +147,15 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
         {/* Header Action Controls */}
         <div className="flex items-center gap-2">
           
+          {/* Sync / Refresh Button */}
+          <button
+            onClick={refreshTasks}
+            className="p-1.5 bg-[#23242a] hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-xl border border-slate-700/60 transition-all flex items-center justify-center"
+            title="Refresh Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
+          </button>
+
           {/* Search Input */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />

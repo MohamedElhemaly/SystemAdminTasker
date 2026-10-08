@@ -7,7 +7,7 @@ export const QuickAddTask = () => {
   const { 
     addTask, 
     lists, 
-    teams, 
+    allUsers, 
     dropdownPriorities, 
     dropdownStatuses, 
     dropdownTaskTypes,
@@ -35,7 +35,7 @@ export const QuickAddTask = () => {
   }, [selectedListId]);
 
   const currentList = lists.find(l => l.id === selectedListId) || lists[0];
-  const allAvailableMembers = teams.flatMap(t => t.members || []);
+  const allAvailableMembers = allUsers || [];
 
   const toggleUserTag = (uid) => {
     if (selectedUserIds.includes(uid)) {

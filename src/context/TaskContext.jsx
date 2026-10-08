@@ -271,6 +271,14 @@ export const TaskProvider = ({ children }) => {
     }
   };
 
+  const refreshTasks = async () => {
+    setLoading(true);
+    if (!isDemoMode && isSupabaseConfigured()) {
+      await fetchInitialData();
+    }
+    setLoading(false);
+  };
+
   // ─────────────────────────────────────────────────
   // Many-to-Many Task Tag Mapping Handlers
   // ─────────────────────────────────────────────────
@@ -1008,6 +1016,7 @@ export const TaskProvider = ({ children }) => {
       createList,
       deleteList,
       createTeam,
+      refreshTasks,
     }}>
       {children}
     </TaskContext.Provider>
