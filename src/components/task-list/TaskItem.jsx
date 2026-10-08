@@ -3,6 +3,7 @@ import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
 import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
+import { getAvatarUrl } from '../../lib/avatars';
 
 export const TaskItem = ({ task }) => {
   const { 
@@ -13,7 +14,8 @@ export const TaskItem = ({ task }) => {
     toggleAcknowledgement,
     dropdownPriorities,
     dropdownStatuses,
-    dropdownTaskTypes
+    dropdownTaskTypes,
+    allUsers
   } = useTasks();
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -21,6 +23,9 @@ export const TaskItem = ({ task }) => {
 
   const isSelected = selectedTaskId === task.id;
   const currentUserId = user?.id || 'demo-user-123';
+
+  const assignedUser = allUsers?.find(u => u.id === task.assigned_to);
+  const assigneeAvatarUrl = assignedUser ? getAvatarUrl(assignedUser.avatar_id, assignedUser.full_name || assignedUser.email) : getAvatarUrl('avatar-1', 'Unknown');
 
   // Dynamic Lookup References
   const priorityInfo = dropdownPriorities.find(p => p.id === task.priority_id) || dropdownPriorities[0];
@@ -174,6 +179,19 @@ export const TaskItem = ({ task }) => {
               </span>
             </span>
           )}
+
+          {/* Assignee Avatar */}
+          <div 
+            className={`${task.task_type === 'team' ? '' : 'ml-auto'} flex items-center gap-1.5`} 
+            title={`Assigned to: ${assignedUser?.full_name || assignedUser?.email || 'Unknown'}`}
+          >
+            <span className="text-[10px] text-slate-500 font-medium">Assigned:</span>
+            <img 
+              src={assigneeAvatarUrl} 
+              alt="Assignee" 
+              className="w-5 h-5 rounded-full border border-slate-700 bg-slate-800 object-cover shrink-0"
+            />
+          </div>
 
           {/* CUSTOM FEATURE: Team Acknowledgement Tags (Chips) */}
           {task.task_type === 'team' && (

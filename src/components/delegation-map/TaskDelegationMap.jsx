@@ -105,16 +105,42 @@ export const TaskDelegationMap = () => {
     });
 
     const userArray = Array.from(userMap.values());
-    const generatedNodes = userArray.map((u, idx) => {
-      const col = idx % 3;
-      const row = Math.floor(idx / 3);
-      return {
-        id: u.id,
-        type: 'userNode',
-        position: { x: col * 340 + 80, y: row * 300 + 60 },
-        data: u
-      };
+    const generatedNodes = [];
+
+    // Group by hierarchical role
+    const roleGroups = {
+      manager: [],
+      sub_manager: [],
+      member: []
+    };
+
+    userArray.forEach(u => {
+      if (u.role === 'manager') roleGroups.manager.push(u);
+      else if (u.role === 'sub_manager' || u.role === 'deputy_manager') roleGroups.sub_manager.push(u);
+      else roleGroups.member.push(u);
     });
+
+    const nodeWidth = 360; // Base width + padding
+    const verticalSpacing = 350;
+
+    // Center each row based on the number of nodes in that tier
+    const layoutGroup = (group, yPos) => {
+      const totalWidth = group.length * nodeWidth;
+      const startX = -(totalWidth / 2) + (nodeWidth / 2);
+      
+      group.forEach((u, idx) => {
+        generatedNodes.push({
+          id: u.id,
+          type: 'userNode',
+          position: { x: startX + (idx * nodeWidth), y: yPos },
+          data: u
+        });
+      });
+    };
+
+    layoutGroup(roleGroups.manager, 0);
+    layoutGroup(roleGroups.sub_manager, verticalSpacing);
+    layoutGroup(roleGroups.member, verticalSpacing * 2);
 
     const generatedEdges = [];
 

@@ -113,7 +113,7 @@ export const Sidebar = ({
               activeView === 'tasks' ? 'bg-[#4772fa] text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <CheckSquare className="w-3.5 h-3.5" />
+            <CheckSquare className="w-3.5 h-3.5 shrink-0" />
             {!isCollapsed && <span>Tasks</span>}
           </button>
           
@@ -124,7 +124,7 @@ export const Sidebar = ({
               activeView === 'map' ? 'bg-pink-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <GitFork className="w-3.5 h-3.5" />
+            <GitFork className="w-3.5 h-3.5 shrink-0" />
             {!isCollapsed && <span>Map</span>}
           </button>
 
@@ -137,7 +137,7 @@ export const Sidebar = ({
               }`}
               title="Super-Admin Dashboard (Manager ONLY)"
             >
-              <ShieldAlert className="w-3.5 h-3.5" />
+              <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
               {!isCollapsed && <span>Admin</span>}
             </button>
           )}
@@ -160,8 +160,8 @@ export const Sidebar = ({
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Inbox className="w-4 h-4 text-blue-400" />
-                {!isCollapsed && <span>Inbox</span>}
+                <Inbox className="w-4 h-4 text-blue-400 shrink-0" />
+                {!isCollapsed && <span className="truncate">Inbox</span>}
               </div>
               {!isCollapsed && countInbox > 0 && (
                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-inbox' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'}`}>
@@ -179,8 +179,8 @@ export const Sidebar = ({
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                {!isCollapsed && <span>Today</span>}
+                <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+                {!isCollapsed && <span className="truncate">Today</span>}
               </div>
               {!isCollapsed && countToday > 0 && (
                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-today' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'}`}>
@@ -198,8 +198,8 @@ export const Sidebar = ({
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <CalendarDays className="w-4 h-4 text-purple-400" />
-                {!isCollapsed && <span>Next 7 Days</span>}
+                <CalendarDays className="w-4 h-4 text-purple-400 shrink-0" />
+                {!isCollapsed && <span className="truncate">Next 7 Days</span>}
               </div>
               {!isCollapsed && countNext7 > 0 && (
                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-next7' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'}`}>
@@ -290,16 +290,16 @@ export const Sidebar = ({
             onClick={signOut}
             className="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-xs text-slate-400 hover:text-red-400 hover:bg-slate-800/50 transition-colors"
           >
-            <LogOut className="w-4 h-4" />
-            {!isCollapsed && <span>Sign Out</span>}
+            <LogOut className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">Sign Out</span>}
           </button>
         ) : (
           <button
             onClick={onOpenAuth}
             className="w-full flex items-center justify-center gap-2 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-500/20"
           >
-            <User className="w-4 h-4" />
-            {!isCollapsed && <span>Sign In / Auth</span>}
+            <User className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">Sign In / Auth</span>}
           </button>
         )}
       </div>
