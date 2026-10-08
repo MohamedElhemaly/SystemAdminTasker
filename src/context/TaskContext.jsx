@@ -941,21 +941,7 @@ export const TaskProvider = ({ children }) => {
   const currentUserId = user?.id || 'demo-user';
   const currentUserRole = profile?.role || 'member';
 
-  const rbacTasks = tasks.filter(task => {
-    if (currentUserRole === 'manager') return true;
-    if (currentUserRole === 'sub_manager' || currentUserRole === 'deputy_manager') {
-      return (
-        task.created_by === currentUserId ||
-        task.assigned_to === currentUserId ||
-        task.task_acknowledgements?.some(a => a.user_id === currentUserId)
-      );
-    }
-    return (
-      task.created_by === currentUserId ||
-      task.assigned_to === currentUserId ||
-      task.task_acknowledgements?.some(a => a.user_id === currentUserId)
-    );
-  });
+  const rbacTasks = tasks; // Total transparency: everyone sees everything
 
   const filteredTasks = rbacTasks.filter(t => {
     if (selectedListId === 'list-inbox') return true;
