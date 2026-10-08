@@ -55,7 +55,7 @@ export const Sidebar = ({
       }`}
     >
       {/* 1. Header & User Profile */}
-      <div className="p-3 border-b border-slate-800/80 flex items-center justify-between">
+      <div className={`p-3 border-b border-slate-800/80 flex ${isCollapsed ? 'flex-col gap-3 justify-center items-center' : 'items-center justify-between'}`}>
         {!isCollapsed ? (
           <div 
             onClick={onOpenProfile}
@@ -105,7 +105,7 @@ export const Sidebar = ({
 
       {/* View Mode Switcher (Tasks vs Delegation Map vs Admin) */}
       <div className="p-2 border-b border-slate-800/80">
-        <div className="flex bg-[#23242a] p-1 rounded-xl border border-slate-800 gap-1">
+        <div className={`flex ${isCollapsed ? 'flex-col' : ''} bg-[#23242a] p-1 rounded-xl border border-slate-800 gap-1`}>
           <button
             type="button"
             onClick={() => setActiveView('tasks')}
@@ -153,13 +153,13 @@ export const Sidebar = ({
           <div className="space-y-0.5">
             <button
               onClick={() => { setSelectedListId('list-inbox'); setActiveView('tasks'); }}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
                 selectedListId === 'list-inbox' && activeView === 'tasks'
                   ? 'bg-[#4772fa] text-white font-semibold shadow-md shadow-blue-500/20'
                   : 'text-slate-300 hover:bg-[#26272e] hover:text-white'
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                 <Inbox className="w-4 h-4 text-blue-400 shrink-0" />
                 {!isCollapsed && <span className="truncate">Inbox</span>}
               </div>
@@ -172,13 +172,13 @@ export const Sidebar = ({
 
             <button
               onClick={() => { setSelectedListId('list-today'); setActiveView('tasks'); }}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
                 selectedListId === 'list-today' && activeView === 'tasks'
                   ? 'bg-[#4772fa] text-white font-semibold shadow-md shadow-blue-500/20'
                   : 'text-slate-300 hover:bg-[#26272e] hover:text-white'
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                 <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
                 {!isCollapsed && <span className="truncate">Today</span>}
               </div>
@@ -191,13 +191,13 @@ export const Sidebar = ({
 
             <button
               onClick={() => { setSelectedListId('list-next7'); setActiveView('tasks'); }}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
                 selectedListId === 'list-next7' && activeView === 'tasks'
                   ? 'bg-[#4772fa] text-white font-semibold shadow-md shadow-blue-500/20'
                   : 'text-slate-300 hover:bg-[#26272e] hover:text-white'
               }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                 <CalendarDays className="w-4 h-4 text-purple-400 shrink-0" />
                 {!isCollapsed && <span className="truncate">Next 7 Days</span>}
               </div>
@@ -227,13 +227,13 @@ export const Sidebar = ({
                 <button
                   key={list.id}
                   onClick={() => { setSelectedListId(list.id); setActiveView('tasks'); }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
                     isSelected
                       ? 'bg-[#4772fa] text-white font-semibold shadow-md shadow-blue-500/20'
                       : 'text-slate-300 hover:bg-[#26272e] hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`flex items-center min-w-0 ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                     {list.team_id ? (
                       <Users className="w-4 h-4 text-pink-400 shrink-0" />
                     ) : (
