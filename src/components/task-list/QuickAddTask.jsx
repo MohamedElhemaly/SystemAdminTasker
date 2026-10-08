@@ -23,6 +23,17 @@ export const QuickAddTask = () => {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
 
+  // Sync initial state when Supabase loads the real UUIDs from the database
+  React.useEffect(() => {
+    if (dropdownPriorities.length > 0 && priorityId.startsWith('p-')) setPriorityId(dropdownPriorities[0].id);
+    if (dropdownStatuses.length > 0 && statusId.startsWith('st-')) setStatusId(dropdownStatuses[0].id);
+    if (dropdownTaskTypes.length > 0 && taskTypeId.startsWith('tt-')) setTaskTypeId(dropdownTaskTypes[0].id);
+  }, [dropdownPriorities, dropdownStatuses, dropdownTaskTypes]);
+
+  React.useEffect(() => {
+    setTargetListId(selectedListId);
+  }, [selectedListId]);
+
   const currentList = lists.find(l => l.id === selectedListId) || lists[0];
   const allAvailableMembers = teams.flatMap(t => t.members || []);
 

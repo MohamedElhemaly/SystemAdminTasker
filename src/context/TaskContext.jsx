@@ -524,15 +524,17 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    const sanitizeUuid = (val) => (val && typeof val === 'string' && val.includes('-') && val.length > 10) ? val : null;
+
     const newTaskObj = {
       id: 'task-' + Date.now(),
       title: taskData.title,
       description: taskData.description || '',
       is_completed: false,
       due_date: taskData.due_date || new Date().toISOString(),
-      priority_id: taskData.priority_id || dropdownPriorities[0]?.id,
-      status_id: taskData.status_id || dropdownStatuses[0]?.id,
-      task_type_id: taskData.task_type_id || dropdownTaskTypes[0]?.id,
+      priority_id: sanitizeUuid(taskData.priority_id) || sanitizeUuid(dropdownPriorities[0]?.id),
+      status_id: sanitizeUuid(taskData.status_id) || sanitizeUuid(dropdownStatuses[0]?.id),
+      task_type_id: sanitizeUuid(taskData.task_type_id) || sanitizeUuid(dropdownTaskTypes[0]?.id),
       list_id: targetListId,
       task_type: isTeamTask ? 'team' : 'personal',
       created_by: currentUserId,
@@ -589,15 +591,28 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    const sanitizeUuid = (val) => (val && typeof val === 'string' && val.includes('-') && val.length > 10) ? val : undefined;
+    
+    // Sanitize any incoming dropdown updates to prevent Postgres UUID crash
+    const sanitizedUpdates = { ...updates };
+    if (sanitizedUpdates.priority_id !== undefined) sanitizedUpdates.priority_id = sanitizeUuid(sanitizedUpdates.priority_id) || null;
+    if (sanitizedUpdates.status_id !== undefined) sanitizedUpdates.status_id = sanitizeUuid(sanitizedUpdates.status_id) || null;
+    if (sanitizedUpdates.task_type_id !== undefined) sanitizedUpdates.task_type_id = sanitizeUuid(sanitizedUpdates.task_type_id) || null;
+    if (sanitizedUpdates.list_id !== undefined) {
+      if (sanitizedUpdates.list_id && sanitizedUpdates.list_id.startsWith('list-')) {
+        sanitizedUpdates.list_id = null;
+      }
+    }
+
     if (isDemoMode || !isSupabaseConfigured()) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...sanitizedUpdates } : t));
       return true;
     }
 
     try {
       const { error } = await supabase
         .from('tasks')
-        .update(updates)
+        .update(sanitizedUpdates)
         .eq('id', taskId);
 
       if (error) {
