@@ -5,7 +5,7 @@ import { getAvatarUrl } from '../../lib/avatars';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Plus, ChevronLeft, 
   ChevronRight, LogOut, User, Sparkles, Shield, GitFork, Settings, 
-  CheckSquare, ShieldAlert 
+  CheckSquare, ShieldAlert, MonitorDown 
 } from 'lucide-react';
 import { isToday, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 
@@ -16,7 +16,9 @@ export const Sidebar = ({
   onOpenProfile, 
   activeView, 
   setActiveView,
-  onEditTeam
+  onEditTeam,
+  deferredPrompt,
+  onInstallPWA
 }) => {
   const { user, profile, isDemoMode, signOut } = useAuth();
   const { lists = [], teams = [], allTasks = [], selectedListId, setSelectedListId } = useTasks();
@@ -297,6 +299,16 @@ export const Sidebar = ({
 
       {/* Footer Profile & Auth Actions */}
       <div className="p-2 border-t border-slate-800/80 space-y-1">
+        {deferredPrompt && (
+          <button
+            onClick={onInstallPWA}
+            className="w-full flex items-center justify-center gap-2 p-2 mb-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-500/20 transition-colors"
+          >
+            <MonitorDown className="w-4 h-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">Install Desktop App</span>}
+          </button>
+        )}
+        
         {user ? (
           <button
             onClick={signOut}

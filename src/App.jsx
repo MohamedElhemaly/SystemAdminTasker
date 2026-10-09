@@ -27,6 +27,29 @@ const DashboardLayout = () => {
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [teamToEdit, setTeamToEdit] = useState(null);
+  
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  React.useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#18181c] font-sans antialiased text-slate-100 selection:bg-blue-600 selection:text-white">
@@ -43,6 +66,8 @@ const DashboardLayout = () => {
           setTeamToEdit(team);
           setIsCreateTeamOpen(true);
         }}
+        deferredPrompt={deferredPrompt}
+        onInstallPWA={handleInstallPWA}
       />
 
       {/* 2. Main Content Area */}
