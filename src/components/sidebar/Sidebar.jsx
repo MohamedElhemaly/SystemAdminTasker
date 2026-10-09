@@ -299,15 +299,19 @@ export const Sidebar = ({
 
       {/* Footer Profile & Auth Actions */}
       <div className="p-2 border-t border-slate-800/80 space-y-1">
-        {deferredPrompt && (
-          <button
-            onClick={onInstallPWA}
-            className="w-full flex items-center justify-center gap-2 p-2 mb-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-500/20 transition-colors"
-          >
-            <MonitorDown className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span className="truncate">Install Desktop App</span>}
-          </button>
-        )}
+        <button
+          onClick={() => {
+            if (deferredPrompt) {
+              onInstallPWA();
+            } else {
+              import('react-hot-toast').then(m => m.toast.error('Desktop App is already installed or initializing. (Make sure you are on https/localhost)'));
+            }
+          }}
+          className="w-full flex items-center justify-center gap-2 p-2 mb-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-500/20 transition-colors"
+        >
+          <MonitorDown className="w-4 h-4 shrink-0" />
+          {!isCollapsed && <span className="truncate">Install Desktop App</span>}
+        </button>
         
         {user ? (
           <button
