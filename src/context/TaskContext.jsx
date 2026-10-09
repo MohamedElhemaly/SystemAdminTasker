@@ -206,6 +206,30 @@ export const TaskProvider = ({ children }) => {
           fetchInitialData();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'lists' },
+        () => { fetchInitialData(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'team_members' },
+        (payload) => {
+          // Check if the current user is the one being added or removed
+          const isTargetUser = 
+             (payload.eventType === 'INSERT' && payload.new.user_id === user?.id) ||
+             (payload.eventType === 'DELETE' && payload.old?.user_id === user?.id);
+
+          if (isTargetUser) {
+            if (payload.eventType === 'INSERT') toast.success('🎉 You have been added to a new Team Workspace!');
+            if (payload.eventType === 'DELETE') toast('You were removed from a Team Workspace.');
+            fetchInitialData();
+          } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+            // Still refresh if someone else was modified (e.g. manager updating UI)
+            fetchInitialData();
+          }
+        }
+      )
       .subscribe();
 
     realtimeChannelRef.current = channel;
@@ -905,6 +929,8 @@ export const TaskProvider = ({ children }) => {
       ]
     };
 
+    const validUserIds = allUsers ? allUsers.filter(u => memberEmails.includes(u.email)).map(u => u.id) : [];
+
     if (isDemoMode || !isSupabaseConfigured()) {
       setTeams(prev => [...prev, newTeamObj]);
       createList(`🚀 ${teamName} Workspace`, '#ec4899', newTeamObj.id);
@@ -920,11 +946,12 @@ export const TaskProvider = ({ children }) => {
 
       if (teamErr) throw teamErr;
 
-      await supabase.from('team_members').insert({
-        team_id: teamData.id,
-        user_id: user.id,
-        role: 'owner'
-      });
+      const inserts = [
+        { team_id: teamData.id, user_id: user.id, role: 'owner' },
+        ...validUserIds.filter(id => id !== user.id).map(id => ({ team_id: teamData.id, user_id: id, role: 'member' }))
+      ];
+
+      await supabase.from('team_members').insert(inserts);
 
       await fetchInitialData();
       createList(`🚀 ${teamName} Workspace`, '#ec4899', teamData.id);
@@ -932,6 +959,98 @@ export const TaskProvider = ({ children }) => {
       return teamData;
     } catch (err) {
       toast.error('Error creating team: ' + err.message);
+    }
+  };
+
+  const updateTeamMembers = async (teamId, memberEmails = []) => {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+
+    if (isDemoMode || !isSupabaseConfigured()) {
+      toast.success('Team members updated (Demo Mode)!');
+      return;
+    }
+
+    try {
+      const ownerId = team.created_by;
+      const validUserIds = allUsers.filter(u => memberEmails.includes(u.email)).map(u => u.id);
+
+      // Remove existing members except the owner
+      await supabase.from('team_members').delete().eq('team_id', teamId).neq('user_id', ownerId);
+
+      // Insert new members
+      const inserts = validUserIds.filter(id => id !== ownerId).map(id => ({
+        team_id: teamId,
+        user_id: id,
+        role: 'member'
+      }));
+
+      if (inserts.length > 0) {
+        await supabase.from('team_members').insert(inserts);
+      }
+
+      await fetchInitialData();
+      toast.success('Team members updated successfully!');
+    } catch (err) {
+      toast.error('Error updating team members: ' + err.message);
+    }
+  };
+
+  const addTeamMember = async (teamId, email) => {
+    const validUser = allUsers.find(u => u.email === email);
+    if (!validUser) {
+      toast.error('User not found. They must sign up first.');
+      return;
+    }
+    
+    if (isDemoMode || !isSupabaseConfigured()) return;
+
+    try {
+      const { error } = await supabase.from('team_members').insert({
+        team_id: teamId,
+        user_id: validUser.id,
+        role: 'member'
+      });
+      if (error && error.code === '23505') {
+         toast.error('User is already in the team!');
+         return;
+      }
+      if (error) throw error;
+      await fetchInitialData();
+      toast.success('Member added successfully!');
+    } catch (err) {
+      toast.error('Error adding member: ' + err.message);
+    }
+  };
+
+  const removeTeamMember = async (teamId, userId) => {
+    if (isDemoMode || !isSupabaseConfigured()) return;
+    try {
+      const { error } = await supabase
+        .from('team_members')
+        .delete()
+        .match({ team_id: teamId, user_id: userId });
+
+      if (error) throw error;
+      await fetchInitialData();
+      toast.success('Member removed successfully!');
+    } catch (err) {
+      toast.error('Error removing member: ' + err.message);
+    }
+  };
+
+  const deleteTeam = async (teamId) => {
+    if (isDemoMode || !isSupabaseConfigured()) {
+      setTeams(prev => prev.filter(t => t.id !== teamId));
+      toast.success('Team deleted (Demo Mode)');
+      return;
+    }
+    try {
+      await supabase.from('teams').delete().eq('id', teamId);
+      await fetchInitialData();
+      toast.success('Team deleted successfully');
+    } catch (err) {
+      toast.error('Error deleting team: ' + err.message);
     }
   };
 
@@ -1002,6 +1121,10 @@ export const TaskProvider = ({ children }) => {
       createList,
       deleteList,
       createTeam,
+      updateTeamMembers,
+      addTeamMember,
+      removeTeamMember,
+      deleteTeam,
       refreshTasks,
     }}>
       {children}

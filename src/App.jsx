@@ -26,6 +26,7 @@ const DashboardLayout = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
+  const [teamToEdit, setTeamToEdit] = useState(null);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#18181c] font-sans antialiased text-slate-100 selection:bg-blue-600 selection:text-white">
@@ -38,6 +39,10 @@ const DashboardLayout = () => {
         onOpenProfile={() => setIsProfileOpen(true)}
         activeView={activeView}
         setActiveView={setActiveView}
+        onEditTeam={(team) => {
+          setTeamToEdit(team);
+          setIsCreateTeamOpen(true);
+        }}
       />
 
       {/* 2. Main Content Area */}
@@ -65,7 +70,14 @@ const DashboardLayout = () => {
       {/* Modals & Dialogs */}
       <ProfileSettingsModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <CreateListModal isOpen={isCreateListOpen} onClose={() => setIsCreateListOpen(false)} />
-      <CreateTeamModal isOpen={isCreateTeamOpen} onClose={() => setIsCreateTeamOpen(false)} />
+      <CreateTeamModal 
+        isOpen={isCreateTeamOpen} 
+        onClose={() => {
+          setIsCreateTeamOpen(false);
+          setTeamToEdit(null);
+        }} 
+        teamToEdit={teamToEdit} 
+      />
     </div>
   );
 };

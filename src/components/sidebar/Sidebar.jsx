@@ -15,7 +15,8 @@ export const Sidebar = ({
   onOpenAuth, 
   onOpenProfile, 
   activeView, 
-  setActiveView 
+  setActiveView,
+  onEditTeam
 }) => {
   const { user, profile, isDemoMode, signOut } = useAuth();
   const { lists = [], teams = [], allTasks = [], selectedListId, setSelectedListId } = useTasks();
@@ -263,9 +264,20 @@ export const Sidebar = ({
             <div className="space-y-2">
               {teams.map((t) => (
                 <div key={t.id} className="p-2 rounded-xl bg-[#23242a] border border-slate-800/80">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                    <span className="text-xs font-semibold text-slate-200 truncate">{t.name}</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Shield className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-200 truncate">{t.name}</span>
+                    </div>
+                    {(userRole === 'manager' || t.created_by === user?.id) && onEditTeam && (
+                      <button 
+                        onClick={() => onEditTeam(t)} 
+                        className="text-slate-500 hover:text-indigo-400 p-1 rounded-md transition-colors"
+                        title="Edit Team Members"
+                      >
+                        <Settings className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                   <div className="pl-2 space-y-1 border-l-2 border-slate-700/60 ml-1">
                     {t.members?.map((m) => (
