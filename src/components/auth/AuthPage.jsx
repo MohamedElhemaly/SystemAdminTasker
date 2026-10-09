@@ -108,7 +108,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
         <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-purple-600/6 rounded-full blur-[80px]" />
       </div>
 
-      <div className="w-full max-w-md bg-[#1f1f23]/95 backdrop-blur-xl text-slate-100 border border-slate-700/60 rounded-3xl p-8 shadow-2xl shadow-black/40 relative z-10">
+      <div className="w-full max-w-md bg-[#1f1f23]/95 backdrop-blur-xl text-slate-100 border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/40 relative z-10 max-h-[95vh] overflow-y-auto">
         
         {/* Branding Header */}
         <div className="flex flex-col items-center text-center mb-6">
@@ -182,7 +182,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
               {/* Built-in Avatar Selector */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">Choose Your Avatar</label>
-                <div className="grid grid-cols-5 gap-2 p-3 rounded-xl bg-[#28292f] border border-slate-700/60">
+                <div className="grid grid-cols-5 gap-2 p-3 rounded-xl bg-[#28292f] border border-slate-700/60 max-h-48 overflow-y-auto">
                   {BUILTIN_AVATARS.map((av) => (
                     <button
                       key={av.id}

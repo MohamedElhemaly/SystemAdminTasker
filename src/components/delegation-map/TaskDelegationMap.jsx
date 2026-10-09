@@ -87,10 +87,22 @@ const EnterpriseUserNode = ({ data }) => {
 const nodeTypes = { userNode: EnterpriseUserNode };
 
 export const TaskDelegationMap = () => {
-  const { allTasks, teams, allUsers } = useTasks();
+  const { allTasks, teams, allUsers, dropdownStatuses } = useTasks();
   const { user, profile } = useAuth();
 
   const { nodes, edges } = useMemo(() => {
+    // 1. FILTER RULE: Show task if it has a map-enabled tag OR a map-enabled status
+    const mapVisibleTasks = allTasks.filter(task => {
+      // Check Tag visibility
+      const hasVisibleTag = task.tags && task.tags.some(tag => tag.is_map_visible === true);
+      
+      // Check Status visibility
+      const taskStatus = dropdownStatuses.find(s => s.id === task.status_id);
+      const hasVisibleStatus = taskStatus && taskStatus.is_map_visible === true;
+
+      return hasVisibleTag || hasVisibleStatus;
+    });
+
     const userMap = new Map();
 
     allUsers.forEach(u => {
@@ -100,7 +112,7 @@ export const TaskDelegationMap = () => {
         email: u.email || '',
         avatar_id: u.avatar_id || 'avatar-1',
         role: u.role || 'member',
-        assignedTasks: allTasks.filter(t => t.assigned_to === u.id)
+        assignedTasks: mapVisibleTasks.filter(t => t.assigned_to === u.id)
       });
     });
 
@@ -144,7 +156,7 @@ export const TaskDelegationMap = () => {
 
     const generatedEdges = [];
 
-    allTasks.forEach(task => {
+    mapVisibleTasks.forEach(task => {
       const creatorId = task.created_by;
       const assigneeId = task.assigned_to;
 

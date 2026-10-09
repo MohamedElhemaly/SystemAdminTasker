@@ -196,7 +196,7 @@ export const ProfileSettingsPage = () => {
                   Select Built-in Avatar
                 </span>
               </label>
-              <div className="grid grid-cols-5 gap-3 p-4 rounded-2xl bg-[#28292f] border border-slate-700/60">
+              <div className="grid grid-cols-5 gap-3 p-4 rounded-2xl bg-[#28292f] border border-slate-700/60 max-h-56 overflow-y-auto">
                 {BUILTIN_AVATARS.map((av) => {
                   const isSelected = selectedAvatarId === av.id;
                   return (

@@ -393,15 +393,15 @@ export const TaskProvider = ({ children }) => {
   // ─────────────────────────────────────────────────
   // CRUD: Dynamic Dropdown Statuses
   // ─────────────────────────────────────────────────
-  const addStatus = async (name, color_hex = '#3b82f6', is_completed_state = false) => {
-    const newItem = { id: 'st-' + Date.now(), name, color_hex, is_completed_state, created_by: user?.id };
+  const addStatus = async (name, color_hex = '#3b82f6', is_completed_state = false, is_map_visible = false) => {
+    const newItem = { id: 'st-' + Date.now(), name, color_hex, is_completed_state, is_map_visible, created_by: user?.id };
     if (isDemoMode || !isSupabaseConfigured()) {
       setDropdownStatuses(prev => [...prev, newItem]);
       toast.success(`Status "${name}" created!`);
       return newItem;
     }
     try {
-      const { data, error } = await supabase.from('dropdown_statuses').insert({ name, color_hex, is_completed_state, created_by: user.id }).select().single();
+      const { data, error } = await supabase.from('dropdown_statuses').insert({ name, color_hex, is_completed_state, is_map_visible, created_by: user.id }).select().single();
       if (error) throw error;
       setDropdownStatuses(prev => [...prev, data]);
       toast.success(`Status "${name}" created!`);
@@ -467,15 +467,15 @@ export const TaskProvider = ({ children }) => {
   // ─────────────────────────────────────────────────
   // CRUD: Dynamic Dropdown Tags
   // ─────────────────────────────────────────────────
-  const addTag = async (name, color_hex = '#3b82f6') => {
-    const newItem = { id: 'tag-' + Date.now(), name, color_hex, created_by: user?.id };
+  const addTag = async (name, color_hex = '#3b82f6', is_map_visible = false) => {
+    const newItem = { id: 'tag-' + Date.now(), name, color_hex, is_map_visible, created_by: user?.id };
     if (isDemoMode || !isSupabaseConfigured()) {
       setDropdownTags(prev => [...prev, newItem]);
       toast.success(`Tag "${name}" created!`);
       return newItem;
     }
     try {
-      const { data, error } = await supabase.from('dropdown_tags').insert({ name, color_hex, created_by: user.id }).select().single();
+      const { data, error } = await supabase.from('dropdown_tags').insert({ name, color_hex, is_map_visible, created_by: user.id }).select().single();
       if (error) throw error;
       setDropdownTags(prev => [...prev, data]);
       toast.success(`Tag "${name}" created!`);

@@ -42,6 +42,7 @@ export const AdminDashboard = () => {
   const [statusName, setStatusName] = useState('');
   const [statusColor, setStatusColor] = useState('#3b82f6');
   const [statusIsCompleted, setStatusIsCompleted] = useState(false);
+  const [statusIsMapVisible, setStatusIsMapVisible] = useState(false);
 
   const [typeName, setTypeName] = useState('');
   const [typeColor, setTypeColor] = useState('#ec4899');
@@ -49,6 +50,7 @@ export const AdminDashboard = () => {
 
   const [tagName, setTagName] = useState('');
   const [tagColor, setTagColor] = useState('#3b82f6');
+  const [tagIsMapVisible, setTagIsMapVisible] = useState(false);
 
   const [listName, setListName] = useState('');
   const [listColor, setListColor] = useState('#10b981');
@@ -171,9 +173,10 @@ export const AdminDashboard = () => {
   const handleCreateStatus = async (e) => {
     e.preventDefault();
     if (!statusName.trim()) return;
-    await addStatus(statusName.trim(), statusColor, statusIsCompleted);
+    await addStatus(statusName.trim(), statusColor, statusIsCompleted, statusIsMapVisible);
     setStatusName('');
     setStatusIsCompleted(false);
+    setStatusIsMapVisible(false);
   };
 
   const handleCreateTaskType = async (e) => {
@@ -187,8 +190,9 @@ export const AdminDashboard = () => {
   const handleCreateTag = async (e) => {
     e.preventDefault();
     if (!tagName.trim()) return;
-    await addTag(tagName.trim(), tagColor);
+    await addTag(tagName.trim(), tagColor, tagIsMapVisible);
     setTagName('');
+    setTagIsMapVisible(false);
   };
 
   const handleCreateList = async (e) => {
@@ -458,15 +462,26 @@ export const AdminDashboard = () => {
                   onChange={(e) => setStatusColor(e.target.value)}
                   className="w-full h-9 p-1 bg-[#28292f] border border-slate-700 rounded-xl cursor-pointer"
                 />
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={statusIsCompleted}
-                    onChange={(e) => setStatusIsCompleted(e.target.checked)}
-                    className="rounded border-slate-700 text-yellow-500 focus:ring-0 bg-[#28292f]"
-                  />
-                  <span>Is Completed State</span>
-                </label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={statusIsCompleted}
+                      onChange={(e) => setStatusIsCompleted(e.target.checked)}
+                      className="rounded border-slate-700 text-yellow-500 focus:ring-0 bg-[#28292f]"
+                    />
+                    <span>Is Completed State</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={statusIsMapVisible}
+                      onChange={(e) => setStatusIsMapVisible(e.target.checked)}
+                      className="rounded border-slate-700 text-blue-500 focus:ring-0 bg-[#28292f]"
+                    />
+                    <span>Show in Task Map</span>
+                  </label>
+                </div>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl text-xs font-semibold"
@@ -487,6 +502,11 @@ export const AdminDashboard = () => {
                         {item.is_completed_state && (
                           <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                             Completed State
+                          </span>
+                        )}
+                        {item.is_map_visible && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] uppercase font-bold tracking-wider">
+                            Map Enabled
                           </span>
                         )}
                       </div>
@@ -577,24 +597,33 @@ export const AdminDashboard = () => {
                 <Plus className="w-4 h-4 text-blue-400" />
                 <span>Create Dynamic Tag</span>
               </h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
                 <input
                   type="text"
                   required
                   placeholder="Tag Name (e.g. Critical Bug)"
                   value={tagName}
                   onChange={(e) => setTagName(e.target.value)}
-                  className="flex-1 px-3 py-2 bg-[#28292f] border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none"
+                  className="w-full sm:flex-1 px-3 py-2 bg-[#28292f] border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none"
                 />
                 <input
                   type="color"
                   value={tagColor}
                   onChange={(e) => setTagColor(e.target.value)}
-                  className="w-10 h-9 p-1 bg-[#28292f] border border-slate-700 rounded-xl cursor-pointer"
+                  className="w-full sm:w-10 h-9 p-1 bg-[#28292f] border border-slate-700 rounded-xl cursor-pointer"
                 />
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer w-full sm:w-auto">
+                  <input
+                    type="checkbox"
+                    checked={tagIsMapVisible}
+                    onChange={(e) => setTagIsMapVisible(e.target.checked)}
+                    className="rounded border-slate-700 text-blue-500 focus:ring-0 bg-[#28292f]"
+                  />
+                  <span>Show in Task Map</span>
+                </label>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
+                  className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold"
                 >
                   Add Tag
                 </button>
@@ -608,6 +637,11 @@ export const AdminDashboard = () => {
                     <div className="flex items-center gap-2">
                       <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: tag.color_hex || tag.color || '#3b82f6' }} />
                       <span className="text-xs font-semibold text-white">{tag.name}</span>
+                      {tag.is_map_visible && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] uppercase font-bold tracking-wider">
+                          Map Enabled
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => deleteTag(tag.id)}

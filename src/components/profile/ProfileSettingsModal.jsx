@@ -91,7 +91,7 @@ export const ProfileSettingsModal = ({ isOpen, onClose }) => {
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
               Select Avatar
             </label>
-            <div className="grid grid-cols-5 gap-3 p-3 rounded-2xl bg-[#28292f] border border-slate-700/60">
+            <div className="grid grid-cols-5 gap-3 p-3 rounded-2xl bg-[#28292f] border border-slate-700/60 max-h-48 overflow-y-auto">
               {BUILTIN_AVATARS.map((av) => {
                 const isSelected = selectedAvatarId === av.id;
                 return (
