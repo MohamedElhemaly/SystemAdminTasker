@@ -5,7 +5,9 @@ import {
   Controls, 
   MiniMap, 
   Handle, 
-  Position 
+  Position,
+  useNodesState,
+  useEdgesState
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useTasks } from '../../context/TaskContext';
@@ -90,7 +92,10 @@ export const TaskDelegationMap = () => {
   const { allTasks, teams, allUsers, dropdownStatuses } = useTasks();
   const { user, profile } = useAuth();
 
-  const { nodes, edges } = useMemo(() => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const calculateLayout = React.useCallback((forceReset = false) => {
     // 1. FILTER RULE: Show task if it has a map-enabled tag OR a map-enabled status
     const mapVisibleTasks = allTasks.filter(task => {
       // Check Tag visibility
@@ -177,8 +182,27 @@ export const TaskDelegationMap = () => {
       }
     });
 
-    return { nodes: generatedNodes, edges: generatedEdges };
-  }, [allTasks, teams, allUsers, user, profile]);
+    setNodes(currentNodes => {
+      if (forceReset) return generatedNodes;
+      return generatedNodes.map(newGenNode => {
+        const existing = currentNodes.find(n => n.id === newGenNode.id);
+        if (existing) {
+           return { ...newGenNode, position: existing.position }; // Preserve user's manual dragging position
+        }
+        return newGenNode;
+      });
+    });
+    setEdges(generatedEdges);
+
+  }, [allTasks, teams, allUsers, dropdownStatuses, user, profile, setNodes, setEdges]);
+
+  React.useEffect(() => {
+    calculateLayout(false);
+  }, [calculateLayout]);
+
+  const handleResetLayout = () => {
+    calculateLayout(true);
+  };
 
   return (
     <div className="flex-1 h-screen bg-[#18181c] flex flex-col text-slate-100 select-none pb-16 md:pb-0">
@@ -199,12 +223,18 @@ export const TaskDelegationMap = () => {
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-medium">
+        <div className="hidden sm:flex items-center gap-3 text-xs mr-4">
+          <button 
+            onClick={handleResetLayout}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium border border-slate-700 transition-colors shadow-sm"
+          >
+            Reset Layout
+          </button>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-medium">
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Green Edge = Completed Task</span>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 font-medium">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 font-medium">
             <Clock className="w-3.5 h-3.5" />
             <span>Animated Blue Edge = Active Delegation</span>
           </div>
@@ -228,7 +258,10 @@ export const TaskDelegationMap = () => {
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
+          nodesDraggable={true}
           fitView
           className="bg-[#141418]"
         >
