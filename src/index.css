@@ -1,28 +1,39 @@
 @import "tailwindcss";
 
+/* Class-based Dark Mode configuration in Tailwind CSS v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
-    --bg-main: #f5f6f8;
-    --bg-sidebar: #f0f2f5;
+    --bg-main: #f8fafc;
+    --bg-sidebar: #f1f5f9;
     --bg-panel: #ffffff;
-    --bg-hover: #e4e7ed;
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f8fafc;
+    --bg-input: #ffffff;
+    --bg-hover: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
     --text-muted: #94a3b8;
     --border-color: #e2e8f0;
-    --accent-blue: #4772fa;
+    --border-subtle: #f1f5f9;
+    --accent-blue: #2563eb;
   }
 
   .dark {
     --bg-main: #18181c;
-    --bg-sidebar: #1f1f23;
-    --bg-panel: #26262b;
-    --bg-hover: #323238;
-    --text-primary: #f1f5f9;
+    --bg-sidebar: #1b1c20;
+    --bg-panel: #18181c;
+    --bg-card: #1f2026;
+    --bg-card-hover: #25262e;
+    --bg-input: #23242a;
+    --bg-hover: #2a2b33;
+    --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
-    --border-color: #33333d;
-    --accent-blue: #5b82fb;
+    --border-color: #28292f;
+    --border-subtle: #22232a;
+    --accent-blue: #4772fa;
   }
 }
 
@@ -34,6 +45,7 @@ body {
   color: var(--text-primary);
   overflow: hidden;
   user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Custom Scrollbar */
@@ -47,12 +59,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.6);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
 }
 
 /* TickTick Task Checkbox */
@@ -62,17 +82,25 @@ body {
   height: 18px;
   border-radius: 50%;
   border: 2px solid #cbd5e1;
+  background-color: #ffffff;
   outline: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  flex-shrink: 0;
+}
+
+.dark .tick-checkbox {
+  border-color: #475569;
+  background-color: #1e1f26;
 }
 
 .tick-checkbox:hover {
   border-color: var(--accent-blue);
+  transform: scale(1.05);
 }
 
 .tick-checkbox:checked {
@@ -102,3 +130,176 @@ body {
 .priority-flag-low { color: #3b82f6; }
 .priority-flag-medium { color: #eab308; }
 .priority-flag-high { color: #ef4444; }
+
+/* ==========================================================================
+   GLOBAL CLICK UX & TACTILE BUTTON SYSTEM
+   ========================================================================== */
+
+/* 1. Base transition for all interactive controls (Elastic physical feel) */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+.btn,
+.clickable,
+a:not([aria-disabled="true"]),
+input[type="checkbox"],
+input[type="submit"],
+input[type="reset"],
+input[type="button"] {
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.15s ease,
+              background-color 0.15s ease,
+              border-color 0.15s ease,
+              filter 0.12s ease !important;
+  transform-origin: center center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 2. Tactile Press State: Physical compression when mouse/finger is down */
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active,
+.clickable:active,
+input[type="submit"]:active,
+input[type="button"]:active {
+  transform: scale(0.95) !important;
+  filter: brightness(0.92);
+}
+
+/* For icon buttons (small square/circle buttons) */
+button.rounded-full:not(:disabled):active,
+button.p-1:not(:disabled):active,
+button.p-1\.5:not(:disabled):active,
+button.p-2:not(:disabled):active {
+  transform: scale(0.90) !important;
+}
+
+/* 3. Ripple & Click Wave Animations */
+.click-ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
+  animation: globalRippleEffect 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, rgba(99, 102, 241, 0.2) 50%, rgba(255, 255, 255, 0.05) 100%);
+  z-index: 99;
+}
+
+.dark .click-ripple {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, rgba(96, 165, 250, 0.25) 50%, rgba(255, 255, 255, 0.05) 100%);
+}
+
+@keyframes globalRippleEffect {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* 4. Cursor Click Pulse Wave (Radiates right at cursor position) */
+.cursor-click-wave {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: cursorWaveAnim 0.38s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+  z-index: 999999;
+  border: 2px solid rgba(59, 130, 246, 0.7);
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, transparent 70%);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.dark .cursor-click-wave {
+  border: 2px solid rgba(147, 197, 253, 0.85);
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.3) 0%, transparent 70%);
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.6);
+}
+
+@keyframes cursorWaveAnim {
+  0% {
+    width: 6px;
+    height: 6px;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  100% {
+    width: 44px;
+    height: 44px;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+}
+
+/* 5. Checkbox Celebratory Pop */
+.tick-checkbox:active {
+  transform: scale(0.8) !important;
+}
+
+.tick-checkbox:checked {
+  animation: tickBounceCelebration 0.38s cubic-bezier(0.175, 0.885, 0.32, 1.35) forwards;
+}
+
+@keyframes tickBounceCelebration {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.25); }
+  75% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+/* ==========================================================================
+   SMOOTH THEME TOGGLE TRANSITIONS & VIEW TRANSITION ANIMATIONS
+   ========================================================================== */
+
+/* View Transitions API: circular ripple reveal */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 999999;
+}
+
+/* Global synchronized theme color smoothing during toggle */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              fill 0.35s ease,
+              stroke 0.35s ease !important;
+  transition-delay: 0s !important;
+}
+
+/* React Flow Controls & Canvas Dark Mode */
+.dark .react-flow__controls {
+  background-color: #1f1f23 !important;
+  border-color: #2e3039 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .react-flow__controls button {
+  background-color: #1f1f23 !important;
+  border-bottom-color: #2e3039 !important;
+}
+
+.dark .react-flow__controls button:hover {
+  background-color: #2a2b33 !important;
+}
+
+.dark .react-flow__controls button svg {
+  fill: #cbd5e1 !important;
+}
+
+
+

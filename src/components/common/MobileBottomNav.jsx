@@ -10,11 +10,11 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
   const userRole = profile?.role || 'manager';
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1b1c20] border-t border-slate-800 flex items-center justify-around z-40 px-2 select-none shadow-2xl">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-[#1b1c20] border-t border-slate-200 dark:border-slate-800 flex items-center justify-around z-40 px-2 select-none shadow-lg">
       <button
         onClick={() => { setSelectedListId('list-inbox'); setActiveView('tasks'); }}
-        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${
-          selectedListId === 'list-inbox' && activeView === 'tasks' ? 'text-blue-400 font-bold' : 'text-slate-400'
+        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+          selectedListId === 'list-inbox' && activeView === 'tasks' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-slate-500 dark:text-slate-400'
         }`}
       >
         <Inbox className="w-5 h-5" />
@@ -23,8 +23,8 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
 
       <button
         onClick={() => { setSelectedListId('list-today'); setActiveView('tasks'); }}
-        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${
-          selectedListId === 'list-today' && activeView === 'tasks' ? 'text-emerald-400 font-bold' : 'text-slate-400'
+        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+          selectedListId === 'list-today' && activeView === 'tasks' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'
         }`}
       >
         <Calendar className="w-5 h-5" />
@@ -33,8 +33,8 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
 
       <button
         onClick={() => setActiveView('map')}
-        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${
-          activeView === 'map' ? 'text-pink-400 font-bold' : 'text-slate-400'
+        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+          activeView === 'map' ? 'text-pink-600 dark:text-pink-400 font-bold' : 'text-slate-500 dark:text-slate-400'
         }`}
       >
         <GitFork className="w-5 h-5" />
@@ -44,8 +44,8 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
       {userRole === 'manager' && (
         <button
           onClick={() => setActiveView('admin')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${
-            activeView === 'admin' ? 'text-purple-400 font-bold' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+            activeView === 'admin' ? 'text-purple-600 dark:text-purple-400 font-bold' : 'text-slate-500 dark:text-slate-400'
           }`}
         >
           <ShieldAlert className="w-5 h-5" />
@@ -55,7 +55,7 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
 
       <button
         onClick={onOpenProfile}
-        className="flex flex-col items-center gap-1 text-[10px] font-medium text-slate-400"
+        className="flex flex-col items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
       >
         <User className="w-5 h-5" />
         <span>Profile</span>

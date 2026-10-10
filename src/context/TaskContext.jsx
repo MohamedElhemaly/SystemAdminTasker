@@ -45,6 +45,15 @@ const DEFAULT_TAGS = [
   { id: 'tag-3', name: 'Security', color_hex: '#8b5cf6' }
 ];
 
+const DEFAULT_USERS = [
+  { id: 'usr-1', email: 'manager@ticktick-team.com', full_name: 'Mohamed El-hemaly', avatar_id: 'avatar-11', role: 'manager' },
+  { id: 'usr-2', email: 'sarah.c@ticktick-team.com', full_name: 'Sarah Connor', avatar_id: 'avatar-16', role: 'sub_manager' },
+  { id: 'usr-3', email: 'omar.f@ticktick-team.com', full_name: 'Omar Farooq', avatar_id: 'avatar-12', role: 'deputy_manager' },
+  { id: 'usr-4', email: 'alex.k@ticktick-team.com', full_name: 'Alex Kumar', avatar_id: 'avatar-14', role: 'member' },
+  { id: 'usr-5', email: 'elena.r@ticktick-team.com', full_name: 'Elena Rostova', avatar_id: 'avatar-17', role: 'member' },
+  { id: 'usr-6', email: 'david.b@ticktick-team.com', full_name: 'David Beckham', avatar_id: 'avatar-15', role: 'member' }
+];
+
 // Helper: generate a unique localStorage key per user
 const getStoreKey = (userId) => `tasker_store_${userId || 'anonymous'}`;
 
@@ -54,7 +63,7 @@ export const TaskProvider = ({ children }) => {
   const [tasks, setTasks] = useState([]);
   const [lists, setLists] = useState(SYSTEM_SMART_LISTS);
   const [teams, setTeams] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState(DEFAULT_USERS);
   
   // Dynamic Dropdowns Global State
   const [dropdownPriorities, setDropdownPriorities] = useState(DEFAULT_PRIORITIES);
@@ -69,6 +78,11 @@ export const TaskProvider = ({ children }) => {
   // Gate: prevent auto-persist from overwriting localStorage before initial load completes
   const hasLoadedRef = useRef(false);
   const realtimeChannelRef = useRef(null);
+  const tasksRef = useRef(tasks);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
 
   // ─────────────────────────────────────────────────
   // Complete State Reset (registered with AuthContext)
@@ -124,7 +138,11 @@ export const TaskProvider = ({ children }) => {
             if (Array.isArray(parsed.tasks)) setTasks(parsed.tasks);
             if (Array.isArray(parsed.lists) && parsed.lists.length > 0) setLists(parsed.lists);
             if (Array.isArray(parsed.teams)) setTeams(parsed.teams);
-            if (Array.isArray(parsed.allUsers)) setAllUsers(parsed.allUsers);
+            if (Array.isArray(parsed.allUsers) && parsed.allUsers.length > 0) {
+              setAllUsers(parsed.allUsers);
+            } else {
+              setAllUsers(DEFAULT_USERS);
+            }
             if (Array.isArray(parsed.dropdownPriorities) && parsed.dropdownPriorities.length > 0) setDropdownPriorities(parsed.dropdownPriorities);
             if (Array.isArray(parsed.dropdownStatuses) && parsed.dropdownStatuses.length > 0) setDropdownStatuses(parsed.dropdownStatuses);
             if (Array.isArray(parsed.dropdownTaskTypes) && parsed.dropdownTaskTypes.length > 0) setDropdownTaskTypes(parsed.dropdownTaskTypes);
@@ -181,6 +199,12 @@ export const TaskProvider = ({ children }) => {
   const subscribeRealtime = () => {
     if (!isSupabaseConfigured() || isDemoMode) return;
 
+    // Clean up existing channel before re-subscribing to prevent stacked listeners
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
     const channel = supabase
       .channel('public:tasks')
       .on(
@@ -188,10 +212,19 @@ export const TaskProvider = ({ children }) => {
         { event: 'INSERT', schema: 'public', table: 'tasks' },
         (payload) => {
           const newTask = payload.new;
-          if (newTask.assigned_to === user?.id) {
-            toast.success(`📌 New Task Assigned: "${newTask.title}"`);
-          } else {
-            toast(`✨ New Task Created: "${newTask.title}"`);
+          // Avoid notification spam to the creator themselves (already notified locally)
+          if (newTask.created_by !== user?.id) {
+            if (newTask.assigned_to === user?.id) {
+              toast.success(`📌 New Task Assigned: "${newTask.title}"`, {
+                id: `task-assigned-${newTask.id}`,
+                duration: 3500,
+              });
+            } else {
+              toast(`✨ Team Task Added: "${newTask.title}"`, {
+                id: `task-created-${newTask.id}`,
+                duration: 2500,
+              });
+            }
           }
           fetchInitialData();
         }
@@ -200,8 +233,15 @@ export const TaskProvider = ({ children }) => {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'tasks' },
         (payload) => {
-          if (payload.new.is_completed && !payload.old.is_completed) {
-            toast.success(`✅ Task Completed: "${payload.new.title}"`);
+          // Compare against current memory state: only fire if genuinely transitioning from incomplete to complete
+          const prevTask = tasksRef.current?.find(t => t.id === payload.new.id);
+          const wasCompleted = prevTask ? prevTask.is_completed : false;
+
+          if (payload.new.is_completed && !wasCompleted) {
+            toast.success(`✅ Task Completed: "${payload.new.title}"`, {
+              id: `task-complete-${payload.new.id}`,
+              duration: 2500,
+            });
           }
           fetchInitialData();
         }
@@ -221,8 +261,18 @@ export const TaskProvider = ({ children }) => {
              (payload.eventType === 'DELETE' && payload.old?.user_id === user?.id);
 
           if (isTargetUser) {
-            if (payload.eventType === 'INSERT') toast.success('🎉 You have been added to a new Team Workspace!');
-            if (payload.eventType === 'DELETE') toast('You were removed from a Team Workspace.');
+            if (payload.eventType === 'INSERT') {
+              toast.success('🎉 You have been added to a new Team Workspace!', {
+                id: 'team-member-add',
+                duration: 3500,
+              });
+            }
+            if (payload.eventType === 'DELETE') {
+              toast('You were removed from a Team Workspace.', {
+                id: 'team-member-remove',
+                duration: 3500,
+              });
+            }
             fetchInitialData();
           } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
             // Still refresh if someone else was modified (e.g. manager updating UI)
@@ -240,9 +290,19 @@ export const TaskProvider = ({ children }) => {
   // ─────────────────────────────────────────────────
   const fetchInitialData = async () => {
     try {
-      // 1. Fetch All Profiles
+      // 1. Fetch All Profiles (merge with default team members so candidates are always available)
       const { data: profilesData } = await supabase.from('profiles').select('*');
-      if (profilesData) setAllUsers(profilesData);
+      const baseProfiles = (profilesData && profilesData.length > 0) ? profilesData : [];
+      const combined = [...baseProfiles];
+      DEFAULT_USERS.forEach(defU => {
+        if (!combined.some(u => 
+          u.id === defU.id || 
+          (u.email && defU.email && u.email.toLowerCase() === defU.email.toLowerCase())
+        )) {
+          combined.push(defU);
+        }
+      });
+      setAllUsers(combined);
 
       // 2. Fetch Teams & Members
       const { data: teamsData } = await supabase.from('teams').select('*, team_members(*)');
@@ -532,6 +592,13 @@ export const TaskProvider = ({ children }) => {
     const targetList = targetListId ? lists.find(l => l.id === targetListId) : null;
     
     const isTeamTask = taskData.task_type === 'team' || Boolean(taskData.tagged_user_ids?.length);
+    
+    // Strict Requirement: Team tasks MUST have at least one team member selected
+    if (taskData.task_type === 'team' && (!taskData.tagged_user_ids || taskData.tagged_user_ids.length === 0)) {
+      toast.error('Team Task Error: You must select at least one team member!');
+      return null;
+    }
+
     let newAcks = [];
 
     if (taskData.tagged_user_ids && taskData.tagged_user_ids.length > 0) {
@@ -580,7 +647,7 @@ export const TaskProvider = ({ children }) => {
     if (isDemoMode || !isSupabaseConfigured()) {
       setTasks(prev => [newTaskObj, ...prev]);
       setSelectedTaskId(newTaskObj.id);
-      toast.success('Task created successfully!');
+      toast.success(isTeamTask ? `Team task created with ${newAcks.length} assigned member(s)!` : 'Task created successfully!');
       return newTaskObj;
     }
 
@@ -602,9 +669,20 @@ export const TaskProvider = ({ children }) => {
         .single();
 
       if (error) throw error;
+
+      // Insert team member acknowledgements if team task
+      if (data && taskData.tagged_user_ids?.length > 0) {
+        const acksToInsert = taskData.tagged_user_ids.map(uid => ({
+          task_id: data.id,
+          user_id: uid,
+          is_acknowledged: false
+        }));
+        await supabase.from('task_acknowledgements').insert(acksToInsert);
+      }
+
       await fetchInitialData();
       if (data) setSelectedTaskId(data.id);
-      toast.success('Task created successfully!');
+      toast.success(isTeamTask ? `Team task created with ${taskData.tagged_user_ids.length} member(s)!` : 'Task created successfully!');
       return data;
     } catch (err) {
       toast.error('Error creating task: ' + err.message);
@@ -613,13 +691,21 @@ export const TaskProvider = ({ children }) => {
 
   const updateTask = async (taskId, updates) => {
     const targetTask = tasks.find(t => t.id === taskId);
-    if (!targetTask) return;
+    if (!targetTask) return false;
 
-    if (updates.is_completed === true) {
-      const pendingAcks = targetTask.task_acknowledgements?.filter(a => !a.is_acknowledged) || [];
-      if (targetTask.task_type === 'team' && pendingAcks.length > 0) {
-        toast.error(`Cannot complete task! ${pendingAcks.length} pending team member acknowledgement(s) remaining.`);
-        return false;
+    // Strict Rule: A team task cannot be marked complete if ANY team member is still working
+    const isCompletedStatus = updates.status_id && dropdownStatuses.find(st => st.id === updates.status_id)?.is_completed_state;
+    const willBeCompleted = updates.is_completed === true || isCompletedStatus;
+
+    if (willBeCompleted && !targetTask.is_completed) {
+      const isTeam = targetTask.task_type === 'team' || (targetTask.task_acknowledgements && targetTask.task_acknowledgements.length > 0);
+      if (isTeam) {
+        const pendingMembers = (targetTask.task_acknowledgements || []).filter(a => !a.is_acknowledged);
+        if (pendingMembers.length > 0) {
+          const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
+          toast.error(`Cannot complete task! ${pendingMembers.length} team member(s) still working on it: ${names}`, { duration: 6000 });
+          return false;
+        }
       }
     }
 
@@ -661,15 +747,45 @@ export const TaskProvider = ({ children }) => {
 
   const toggleTaskCompletion = async (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
-    if (!targetTask) return;
-    await updateTask(taskId, { is_completed: !targetTask.is_completed });
+    if (!targetTask) return false;
+    
+    // Strict Business Logic Check (Only when marking AS DONE)
+    if (!targetTask.is_completed) {
+      const isTeam = targetTask.task_type === 'team' || (targetTask.task_acknowledgements && targetTask.task_acknowledgements.length > 0);
+      if (isTeam) {
+        const pendingMembers = (targetTask.task_acknowledgements || []).filter(a => !a.is_acknowledged);
+        if (pendingMembers.length > 0) {
+          const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
+          toast.error(`Cannot complete task! ${pendingMembers.length} team member(s) still working on it: ${names}`, { 
+            id: `task-locked-${taskId}`,
+            duration: 4000 
+          });
+          return false;
+        }
+      }
+    }
+
+    const nextCompleted = !targetTask.is_completed;
+    if (nextCompleted) {
+      toast.success(`✅ Task Completed: "${targetTask.title}"`, {
+        id: `task-complete-${taskId}`,
+        duration: 2500,
+      });
+    } else {
+      toast(`Task marked active: "${targetTask.title}"`, {
+        id: `task-complete-${taskId}`,
+        duration: 2000,
+      });
+    }
+
+    return await updateTask(taskId, { is_completed: nextCompleted });
   };
 
   const deleteTask = async (taskId) => {
     if (isDemoMode || !isSupabaseConfigured()) {
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
-      toast.success('Task deleted');
+      toast.success('Task deleted', { id: `task-delete-${taskId}`, duration: 2500 });
       return;
     }
 
@@ -678,54 +794,98 @@ export const TaskProvider = ({ children }) => {
       if (error) throw error;
       setTasks(prev => prev.filter(t => t.id !== taskId));
       if (selectedTaskId === taskId) setSelectedTaskId(null);
-      toast.success('Task deleted');
+      toast.success('Task deleted', { id: `task-delete-${taskId}`, duration: 2500 });
     } catch (err) {
-      toast.error('Error deleting task: ' + err.message);
+      toast.error('Error deleting task: ' + err.message, { id: 'task-delete-error' });
     }
   };
 
   const toggleAcknowledgement = async (taskId, ackId, targetUserId) => {
     const currentUserId = user?.id || 'demo-user';
+    const currentUserRole = profile?.role || 'member';
 
-    if (targetUserId !== currentUserId) {
-      toast.error('Security Restriction: You can only acknowledge your own tag!');
+    // Allow the assigned member to toggle their own, OR allow admin/manager to manage
+    if (targetUserId !== currentUserId && currentUserRole !== 'manager') {
+      toast.error('Security Restriction: You can only complete your own assigned work!');
       return;
     }
 
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    const updatedAcks = task.task_acknowledgements.map(ack => {
+    const targetAck = (task.task_acknowledgements || []).find(a => a.id === ackId || a.user_id === targetUserId);
+    const newStatus = !targetAck?.is_acknowledged;
+    const memberName = targetAck?.full_name || 'Team Member';
+
+    const updatedAcks = (task.task_acknowledgements || []).map(ack => {
       if (ack.id === ackId || ack.user_id === targetUserId) {
-        return { ...ack, is_acknowledged: !ack.is_acknowledged };
+        return { 
+          ...ack, 
+          is_acknowledged: newStatus,
+          acknowledged_at: newStatus ? new Date().toISOString() : null
+        };
       }
       return ack;
     });
 
+    const finishedCount = updatedAcks.filter(a => a.is_acknowledged).length;
+    const totalCount = updatedAcks.length;
+
     if (isDemoMode || !isSupabaseConfigured()) {
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, task_acknowledgements: updatedAcks } : t));
-      toast.success('Acknowledgement status updated!');
+      if (newStatus) {
+        if (finishedCount === totalCount) {
+          toast.success(`🎉 All ${totalCount} team members have finished! Task is now unlocked for completion.`, {
+            id: `ack-complete-${taskId}`,
+            duration: 4000,
+          });
+        } else {
+          toast.success(`✓ ${memberName} finished work! (${finishedCount}/${totalCount} completed)`, {
+            id: `ack-status-${taskId}`,
+            duration: 2500,
+          });
+        }
+      } else {
+        toast(`Marked ${memberName} as still working on task.`, {
+          id: `ack-status-${taskId}`,
+          duration: 2000,
+        });
+      }
       return;
     }
 
     try {
-      const targetAck = task.task_acknowledgements.find(a => a.id === ackId || a.user_id === targetUserId);
-      const newStatus = !targetAck?.is_acknowledged;
-
       const { error } = await supabase
         .from('task_acknowledgements')
         .update({ 
           is_acknowledged: newStatus,
           acknowledged_at: newStatus ? new Date().toISOString() : null
         })
-        .eq('id', ackId)
-        .eq('user_id', currentUserId);
+        .eq('id', ackId);
 
       if (error) throw error;
       await fetchInitialData();
-      toast.success('Acknowledgement status updated!');
+
+      if (newStatus) {
+        if (finishedCount === totalCount) {
+          toast.success(`🎉 All ${totalCount} team members have finished! Task is now unlocked for completion.`, {
+            id: `ack-complete-${taskId}`,
+            duration: 4000,
+          });
+        } else {
+          toast.success(`✓ ${memberName} finished work! (${finishedCount}/${totalCount} completed)`, {
+            id: `ack-status-${taskId}`,
+            duration: 2500,
+          });
+        }
+      } else {
+        toast(`Marked ${memberName} as still working on task.`, {
+          id: `ack-status-${taskId}`,
+          duration: 2000,
+        });
+      }
     } catch (err) {
-      toast.error('Failed to update acknowledgement: ' + err.message);
+      toast.error('Failed to update status: ' + err.message);
     }
   };
 
@@ -796,59 +956,128 @@ export const TaskProvider = ({ children }) => {
   };
 
   // ─────────────────────────────────────────────────
-  // Attachments (Excel/CSV Only)
+  // ─────────────────────────────────────────────────
+  // Attachments (Photos & Excel/CSV)
   // ─────────────────────────────────────────────────
   const addAttachment = async (taskId, file) => {
-    const allowedExtensions = ['xlsx', 'xls', 'csv'];
+    const photoExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'];
+    const spreadsheetExtensions = ['xlsx', 'xls', 'csv'];
     const fileExt = file.name.split('.').pop()?.toLowerCase();
 
-    if (!allowedExtensions.includes(fileExt)) {
-      toast.error('Security Violation: Only Excel (.xlsx, .xls) and CSV (.csv) files are permitted!');
+    const isImage = file.type?.startsWith('image/') || photoExtensions.includes(fileExt);
+    const isSpreadsheet = spreadsheetExtensions.includes(fileExt) || file.type?.includes('spreadsheet') || file.type?.includes('csv');
+
+    if (!isImage && !isSpreadsheet) {
+      toast.error('Only photos (PNG, JPG, WebP, GIF) and Excel/CSV files are permitted!', {
+        id: 'file-type-restriction',
+        duration: 3500,
+      });
       return false;
     }
 
     const currentUserId = user?.id || 'demo-user';
+    const fallbackMime = isImage ? 'image/png' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
     if (isDemoMode || !isSupabaseConfigured()) {
       const newAtt = {
-        id: 'att-' + Date.now(),
+        id: 'att-' + Date.now() + Math.random().toString(36).substring(2, 6),
         task_id: taskId,
         file_name: file.name,
         file_url: URL.createObjectURL(file),
         file_size: file.size,
-        mime_type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        mime_type: file.type || fallbackMime,
+        created_at: new Date().toISOString()
       };
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, task_attachments: [...(t.task_attachments || []), newAtt] } : t));
-      toast.success(`Excel file "${file.name}" attached successfully!`);
+      toast.success(`${isImage ? 'Photo' : 'File'} "${file.name}" attached successfully!`, {
+        id: `att-uploaded-${taskId}`,
+        duration: 2500,
+      });
       return true;
     }
 
     try {
-      const filePath = `tasks/${taskId}/${Math.random()}_${file.name}`;
-      const { error: uploadErr } = await supabase.storage.from('task_files').upload(filePath, file, {
-        contentType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      // Photos upload to public 'avatars' bucket (supports all image MIME types and fast CDN delivery)
+      // Spreadsheets upload to 'task_files' bucket (dedicated Excel/CSV storage)
+      const targetBucket = isImage ? 'avatars' : 'task_files';
+      const filePath = `tasks/${taskId}/${Date.now()}_${sanitizedName}`;
+
+      const { error: uploadErr } = await supabase.storage.from(targetBucket).upload(filePath, file, {
+        contentType: file.type || fallbackMime,
+        upsert: true
       });
 
       if (uploadErr) throw uploadErr;
 
-      const { data: { publicUrl } } = supabase.storage.from('task_files').getPublicUrl(filePath);
+      const { data: { publicUrl } } = supabase.storage.from(targetBucket).getPublicUrl(filePath);
 
       const { data, error: dbErr } = await supabase.from('task_attachments').insert({
         task_id: taskId,
         file_name: file.name,
         file_url: publicUrl,
         file_size: file.size,
-        mime_type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mime_type: file.type || fallbackMime,
         uploaded_by: currentUserId
       }).select().single();
 
       if (dbErr) throw dbErr;
 
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, task_attachments: [...(t.task_attachments || []), data] } : t));
-      toast.success(`Excel file "${file.name}" attached successfully!`);
+      toast.success(`${isImage ? 'Photo' : 'File'} "${file.name}" attached successfully!`, {
+        id: `att-uploaded-${taskId}`,
+        duration: 2500,
+      });
       return true;
     } catch (err) {
-      toast.error('File upload failed: ' + err.message);
+      toast.error('File upload failed: ' + err.message, {
+        id: 'att-upload-error',
+        duration: 4000,
+      });
+      return false;
+    }
+  };
+
+  const deleteAttachment = async (taskId, attachmentId) => {
+    const task = tasks.find(t => t.id === taskId);
+    const targetAtt = task?.task_attachments?.find(a => a.id === attachmentId);
+
+    if (isDemoMode || !isSupabaseConfigured()) {
+      setTasks(prev => prev.map(t => t.id === taskId ? {
+        ...t,
+        task_attachments: (t.task_attachments || []).filter(a => a.id !== attachmentId)
+      } : t));
+      toast.success('Attachment removed', { id: `att-deleted-${attachmentId}`, duration: 2000 });
+      return true;
+    }
+
+    try {
+      if (targetAtt?.file_url) {
+        try {
+          const isAvatars = targetAtt.file_url.includes('/avatars/');
+          const bucket = isAvatars ? 'avatars' : 'task_files';
+          const parts = targetAtt.file_url.split(`/${bucket}/`);
+          if (parts[1]) {
+            await supabase.storage.from(bucket).remove([decodeURIComponent(parts[1])]);
+          }
+        } catch (_) {
+          // Non-critical if storage file was already deleted
+        }
+      }
+
+      const { error } = await supabase.from('task_attachments').delete().eq('id', attachmentId);
+      if (error) throw error;
+      setTasks(prev => prev.map(t => t.id === taskId ? {
+        ...t,
+        task_attachments: (t.task_attachments || []).filter(a => a.id !== attachmentId)
+      } : t));
+      toast.success('Attachment removed', { id: `att-deleted-${attachmentId}`, duration: 2000 });
+      return true;
+    } catch (err) {
+      toast.error('Failed to remove attachment: ' + err.message, {
+        id: 'att-delete-error',
+        duration: 3500,
+      });
       return false;
     }
   };
@@ -914,22 +1143,28 @@ export const TaskProvider = ({ children }) => {
   // Teams CRUD
   // ─────────────────────────────────────────────────
   const createTeam = async (teamName, memberEmails = []) => {
+    const newTeamId = 'team-' + Date.now();
+    const cleanIdentifiers = memberEmails.map(e => String(e).trim().toLowerCase());
+    const validUsers = allUsers ? allUsers.filter(u => 
+      cleanIdentifiers.includes(String(u.email || '').toLowerCase()) ||
+      cleanIdentifiers.includes(String(u.full_name || '').toLowerCase()) ||
+      cleanIdentifiers.includes(String(u.id || '').toLowerCase())
+    ) : [];
+
     const newTeamObj = {
-      id: 'team-' + Date.now(),
+      id: newTeamId,
       name: teamName,
       created_by: user?.id || 'demo-user',
-      members: [
-        { id: 'mem-self', user_id: user?.id || 'demo-user', full_name: profile?.full_name || 'You', email: user?.email || 'you@team.com' },
-        ...memberEmails.map((email, idx) => ({
-          id: 'mem-' + idx,
-          user_id: 'user-invited-' + idx,
-          full_name: email.split('@')[0],
-          email
+      team_members: [
+        { id: 'mem-self', team_id: newTeamId, user_id: user?.id || 'demo-user', role: 'owner' },
+        ...validUsers.filter(u => u.id !== (user?.id || 'demo-user')).map((u, idx) => ({
+          id: 'mem-' + idx + '-' + Date.now(),
+          team_id: newTeamId,
+          user_id: u.id,
+          role: 'member'
         }))
       ]
     };
-
-    const validUserIds = allUsers ? allUsers.filter(u => memberEmails.includes(u.email)).map(u => u.id) : [];
 
     if (isDemoMode || !isSupabaseConfigured()) {
       setTeams(prev => [...prev, newTeamObj]);
@@ -996,14 +1231,36 @@ export const TaskProvider = ({ children }) => {
     }
   };
 
-  const addTeamMember = async (teamId, email) => {
-    const validUser = allUsers.find(u => u.email === email);
+  const addTeamMember = async (teamId, identifier) => {
+    const cleanId = String(identifier || '').trim().toLowerCase();
+    const validUser = allUsers.find(u => 
+      u.id === identifier ||
+      (u.email && u.email.toLowerCase() === cleanId) ||
+      (u.full_name && u.full_name.toLowerCase() === cleanId)
+    );
     if (!validUser) {
-      toast.error('User not found. They must sign up first.');
+      toast.error('User not found. They must sign up first.', { id: 'team-user-not-found' });
       return;
     }
     
-    if (isDemoMode || !isSupabaseConfigured()) return;
+    if (isDemoMode || !isSupabaseConfigured()) {
+      setTeams(prev => prev.map(t => {
+        if (t.id === teamId) {
+          const members = t.team_members || [];
+          if (members.some(m => m.user_id === validUser.id)) {
+            toast.error('User is already in the team!', { id: 'team-user-duplicate' });
+            return t;
+          }
+          return {
+            ...t,
+            team_members: [...members, { id: 'tm-' + Date.now(), team_id: teamId, user_id: validUser.id, role: 'member' }]
+          };
+        }
+        return t;
+      }));
+      toast.success(`${validUser.full_name || validUser.email} added to team!`, { id: 'team-user-added' });
+      return;
+    }
 
     try {
       const { error } = await supabase.from('team_members').insert({
@@ -1012,19 +1269,47 @@ export const TaskProvider = ({ children }) => {
         role: 'member'
       });
       if (error && error.code === '23505') {
-         toast.error('User is already in the team!');
+         toast.error('User is already in the team!', { id: 'team-user-duplicate' });
          return;
+      }
+      if (error && error.code === '23503') {
+        // Foreign key constraint (user exists in candidates list but not in remote auth.users)
+        setTeams(prev => prev.map(t => {
+          if (t.id === teamId) {
+            const members = t.team_members || [];
+            if (members.some(m => m.user_id === validUser.id)) return t;
+            return {
+              ...t,
+              team_members: [...members, { id: 'tm-' + Date.now(), team_id: teamId, user_id: validUser.id, role: 'member' }]
+            };
+          }
+          return t;
+        }));
+        toast.success(`${validUser.full_name || validUser.email} added to team!`, { id: 'team-user-added' });
+        return;
       }
       if (error) throw error;
       await fetchInitialData();
-      toast.success('Member added successfully!');
+      toast.success(`${validUser.full_name || validUser.email} added to team!`, { id: 'team-user-added' });
     } catch (err) {
-      toast.error('Error adding member: ' + err.message);
+      toast.error('Error adding member: ' + err.message, { id: 'team-add-error' });
     }
   };
 
   const removeTeamMember = async (teamId, userId) => {
-    if (isDemoMode || !isSupabaseConfigured()) return;
+    if (isDemoMode || !isSupabaseConfigured()) {
+      setTeams(prev => prev.map(t => {
+        if (t.id === teamId) {
+          return {
+            ...t,
+            team_members: (t.team_members || []).filter(m => m.user_id !== userId)
+          };
+        }
+        return t;
+      }));
+      toast.success('Member removed successfully!', { id: 'team-member-removed' });
+      return;
+    }
     try {
       const { error } = await supabase
         .from('team_members')
@@ -1118,6 +1403,7 @@ export const TaskProvider = ({ children }) => {
       toggleSubtask,
       deleteSubtask,
       addAttachment,
+      deleteAttachment,
       createList,
       deleteList,
       createTeam,

@@ -111,7 +111,7 @@ export const ProfileSettingsPage = () => {
     : null;
 
   return (
-    <div className="min-h-screen w-screen bg-[#141418] text-slate-100 flex flex-col items-center p-4 sm:p-8 selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen w-screen bg-slate-50 dark:bg-[#141418] text-slate-900 dark:text-slate-100 flex flex-col items-center p-4 sm:p-8 selection:bg-blue-600 selection:text-white">
       
       {/* Background Glow */}
       <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
@@ -127,13 +127,13 @@ export const ProfileSettingsPage = () => {
             <button 
               id="profile-back-btn"
               onClick={() => navigate('/')}
-              className="p-2 rounded-xl bg-[#1f1f23] border border-slate-800 text-slate-400 hover:text-white hover:bg-[#28292f] transition-all"
+              className="p-2 rounded-xl bg-white dark:bg-[#1f1f23] border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#28292f] transition-all shadow-xs cursor-pointer"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Profile Settings</h1>
-              <p className="text-xs text-slate-400 mt-0.5">Manage your account details & avatar</p>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Profile Settings</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Manage your account details & avatar</p>
             </div>
           </div>
 
@@ -141,7 +141,7 @@ export const ProfileSettingsPage = () => {
           <button
             id="profile-signout-btn"
             onClick={handleSignOut}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span className="hidden sm:inline">Sign Out</span>
@@ -149,22 +149,22 @@ export const ProfileSettingsPage = () => {
         </div>
 
         {/* Profile Card */}
-        <div className="bg-[#1f1f23] border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+        <div className="bg-white dark:bg-[#1f1f23] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
           
           {/* Current Profile Preview */}
-          <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#28292f] border border-slate-700/60">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 p-0.5 shadow-xl shadow-blue-500/20 shrink-0">
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/60">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 p-0.5 shadow-md shrink-0">
               <img 
                 src={getAvatarUrl(selectedAvatarId, fullName)} 
                 alt="Avatar" 
-                className="w-full h-full rounded-[14px] object-cover bg-slate-800" 
+                className="w-full h-full rounded-[14px] object-cover bg-slate-100 dark:bg-slate-800" 
               />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-white truncate">{fullName || 'Your Name'}</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate">{fullName || 'Your Name'}</h3>
               <div className="flex items-center gap-2 mt-1">
-                <Mail className="w-3.5 h-3.5 text-slate-500" />
-                <span className="text-xs text-slate-400 truncate">{user?.email || 'email@team.com'}</span>
+                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{user?.email || 'email@team.com'}</span>
               </div>
               <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                 <span 
@@ -178,7 +178,7 @@ export const ProfileSettingsPage = () => {
                   {badge.label}
                 </span>
                 {isDemoMode && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40">
                     Demo Mode
                   </span>
                 )}
@@ -190,13 +190,13 @@ export const ProfileSettingsPage = () => {
             
             {/* Avatar Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-3">
                 <span className="flex items-center gap-2">
-                  <Fingerprint className="w-4 h-4 text-blue-400" />
+                  <Fingerprint className="w-4 h-4 text-blue-500 dark:text-blue-400" />
                   Select Built-in Avatar
                 </span>
               </label>
-              <div className="grid grid-cols-5 gap-3 p-4 rounded-2xl bg-[#28292f] border border-slate-700/60 max-h-56 overflow-y-auto">
+              <div className="grid grid-cols-5 gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/60 max-h-56 overflow-y-auto">
                 {BUILTIN_AVATARS.map((av) => {
                   const isSelected = selectedAvatarId === av.id;
                   return (
@@ -204,16 +204,16 @@ export const ProfileSettingsPage = () => {
                       key={av.id}
                       type="button"
                       onClick={() => setSelectedAvatarId(av.id)}
-                      className={`relative p-2 rounded-2xl flex flex-col items-center gap-1 transition-all ${
+                      className={`relative p-2 rounded-2xl flex flex-col items-center gap-1 transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-blue-600/25 ring-2 ring-blue-500 scale-105 shadow-lg shadow-blue-500/20'
-                          : 'hover:bg-slate-800 hover:scale-102'
+                          ? 'bg-blue-100 dark:bg-blue-600/25 ring-2 ring-blue-500 scale-105 shadow-sm'
+                          : 'hover:bg-slate-200/60 dark:hover:bg-slate-800 hover:scale-102'
                       }`}
                     >
                       <img src={av.url} alt={av.name} className="w-12 h-12 rounded-full object-cover" />
-                      <span className="text-[9px] text-slate-400 font-medium truncate w-full text-center">{av.name.split(' ')[0]}</span>
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium truncate w-full text-center">{av.name.split(' ')[0]}</span>
                       {isSelected && (
-                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-md">
+                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs">
                           <Check className="w-3 h-3" />
                         </div>
                       )}
@@ -225,9 +225,9 @@ export const ProfileSettingsPage = () => {
 
             {/* Full Name Input */}
             <div>
-              <label htmlFor="profile-fullname" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+              <label htmlFor="profile-fullname" className="block text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-2">
                 <span className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-emerald-400" />
+                  <User className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                   Full Name
                 </span>
               </label>
@@ -238,34 +238,34 @@ export const ProfileSettingsPage = () => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
-                className="w-full px-4 py-3 bg-[#28292f] border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all shadow-xs"
               />
             </div>
 
             {/* Email (Read-only) */}
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 <span className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-slate-500" />
+                  <Mail className="w-4 h-4 text-slate-400" />
                   Email Address (Read-only)
                 </span>
               </label>
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#18181c] border border-slate-800 rounded-xl text-sm text-slate-400">
-                <Lock className="w-4 h-4 text-slate-600" />
+              <div className="flex items-center gap-3 px-4 py-3 bg-slate-100 dark:bg-[#18181c] border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-600 dark:text-slate-400">
+                <Lock className="w-4 h-4 text-slate-400" />
                 <span>{user?.email || 'email@team.com'}</span>
               </div>
             </div>
 
             {/* Role (Read-only info) */}
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 <span className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-slate-500" />
+                  <Shield className="w-4 h-4 text-slate-400" />
                   System Role (Managed by Admin)
                 </span>
               </label>
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#18181c] border border-slate-800 rounded-xl text-sm text-slate-400">
-                <Lock className="w-4 h-4 text-slate-600" />
+              <div className="flex items-center gap-3 px-4 py-3 bg-slate-100 dark:bg-[#18181c] border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-600 dark:text-slate-400">
+                <Lock className="w-4 h-4 text-slate-400" />
                 <span>{badge.label}</span>
               </div>
               <p className="text-[10px] text-slate-500 mt-1.5 ml-1">
@@ -276,25 +276,25 @@ export const ProfileSettingsPage = () => {
             {/* Account Info */}
             {accountCreated && (
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                   <span className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-slate-500" />
+                    <Clock className="w-4 h-4 text-slate-400" />
                     Account Created
                   </span>
                 </label>
-                <div className="flex items-center gap-3 px-4 py-3 bg-[#18181c] border border-slate-800 rounded-xl text-sm text-slate-400">
+                <div className="flex items-center gap-3 px-4 py-3 bg-slate-100 dark:bg-[#18181c] border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-600 dark:text-slate-400">
                   <span>{accountCreated}</span>
                 </div>
               </div>
             )}
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-800">
+            <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
               <button
                 id="profile-cancel-btn"
                 type="button"
                 onClick={() => navigate('/')}
-                className="px-4 py-2.5 text-sm text-slate-400 hover:text-white transition-colors"
+                className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -302,10 +302,10 @@ export const ProfileSettingsPage = () => {
                 id="profile-save-btn"
                 type="submit"
                 disabled={saving || !hasChanges}
-                className={`px-6 py-2.5 rounded-xl text-sm font-semibold shadow-lg flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`px-6 py-2.5 rounded-xl text-sm font-semibold shadow-xs flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
                   saveSuccess
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white'
                 }`}
               >
                 {saveSuccess ? (
@@ -325,16 +325,16 @@ export const ProfileSettingsPage = () => {
         </div>
 
         {/* Security Info */}
-        <div className="p-4 rounded-2xl bg-[#1f1f23] border border-slate-800 flex items-start gap-3">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0 mt-0.5">
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#1f1f23] border border-slate-200 dark:border-slate-800 flex items-start gap-3 shadow-xs">
+          <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 shrink-0 mt-0.5">
             <Shield className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h4 className="text-xs font-bold text-white">Account Isolation Notice</h4>
-            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">Account Isolation Notice</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
               Your profile is strictly isolated via Row Level Security (RLS). No other user can view or modify 
-              your private settings. The <code className="px-1 py-0.5 bg-slate-800 rounded text-[10px] text-slate-300">profiles</code> UPDATE 
-              policy enforces <code className="px-1 py-0.5 bg-slate-800 rounded text-[10px] text-slate-300">auth.uid() = id</code> — 
+              your private settings. The <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] text-slate-700 dark:text-slate-300">profiles</code> UPDATE 
+              policy enforces <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] text-slate-700 dark:text-slate-300">auth.uid() = id</code> — 
               only you can write to your own row.
             </p>
           </div>

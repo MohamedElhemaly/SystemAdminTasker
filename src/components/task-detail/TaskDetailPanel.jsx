@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
+import { ModernDropdown } from '../common/ModernDropdown';
+import { getAvatarUrl } from '../../lib/avatars';
 
 export const TaskDetailPanel = () => {
   const { 
@@ -42,10 +44,10 @@ export const TaskDetailPanel = () => {
 
   if (!selectedTask) {
     return (
-      <div className="w-80 lg:w-96 h-screen bg-[#1f1f23] text-slate-400 border-l border-slate-800 hidden md:flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
-        <FileText className="w-12 h-12 text-slate-600 mb-3 opacity-40" />
-        <h3 className="text-sm font-semibold text-slate-300">No Task Selected</h3>
-        <p className="text-xs text-slate-500 mt-1">Select a task from the list to view and edit details.</p>
+      <div className="w-80 lg:w-96 h-screen bg-slate-50 dark:bg-[#1f1f23] text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-slate-800 hidden md:flex flex-col items-center justify-center p-6 text-center select-none shrink-0">
+        <FileText className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 opacity-60" />
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">No Task Selected</h3>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Select a task from the list to view and edit details.</p>
       </div>
     );
   }
@@ -76,56 +78,54 @@ export const TaskDetailPanel = () => {
   const unattachedTags = dropdownTags.filter(dt => !taskTags.some(tt => tt.id === dt.id));
 
   return (
-    <div className="w-full md:w-80 lg:w-96 h-screen bg-[#1f1f23] text-slate-100 border-l border-slate-800 flex flex-col shrink-0 select-none z-30 shadow-2xl">
+    <div className="w-full md:w-80 lg:w-96 h-screen bg-slate-50 dark:bg-[#1f1f23] text-slate-900 dark:text-slate-100 border-l border-slate-200 dark:border-slate-800 flex flex-col shrink-0 select-none z-30 shadow-xl">
       
       {/* Top Header Bar - 100% Dynamic Database Dropdowns */}
-      <div className="p-3 border-b border-slate-800 flex items-center justify-between gap-2">
+      <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-transparent flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
           
           {/* Dynamic Priority Dropdown */}
-          <select
+          <ModernDropdown
             value={selectedTask.priority_id || dropdownPriorities[0]?.id || 'p-1'}
-            onChange={(e) => updateTask(selectedTask.id, { priority_id: e.target.value })}
-            className="bg-[#28292f] border border-slate-700/70 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-200 focus:outline-none max-w-[110px] truncate"
-          >
-            {dropdownPriorities.map((p) => (
-              <option key={p.id} value={p.id}>
-                Priority: {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={(val) => updateTask(selectedTask.id, { priority_id: val })}
+            options={dropdownPriorities.map((p) => ({
+              value: p.id,
+              label: p.name,
+              color: p.color_hex || p.color,
+            }))}
+            prefix="Priority: "
+          />
 
           {/* Dynamic Status Dropdown */}
-          <select
+          <ModernDropdown
             value={selectedTask.status_id || dropdownStatuses[0]?.id || 'st-1'}
-            onChange={(e) => updateTask(selectedTask.id, { status_id: e.target.value })}
-            className="bg-[#28292f] border border-slate-700/70 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-200 focus:outline-none max-w-[110px] truncate"
-          >
-            {dropdownStatuses.map((st) => (
-              <option key={st.id} value={st.id}>
-                Status: {st.name}
-              </option>
-            ))}
-          </select>
+            onChange={(val) => updateTask(selectedTask.id, { status_id: val })}
+            options={dropdownStatuses.map((st) => ({
+              value: st.id,
+              label: st.name,
+              color: st.color_hex || st.color,
+            }))}
+            prefix="Status: "
+          />
 
           {/* Dynamic Task Type Selector */}
-          <select
+          <ModernDropdown
             value={selectedTask.task_type_id || dropdownTaskTypes[0]?.id || 'tt-1'}
-            onChange={(e) => updateTask(selectedTask.id, { task_type_id: e.target.value })}
-            className="bg-[#28292f] border border-pink-500/40 text-pink-300 rounded-xl px-2 py-1 text-[11px] font-semibold focus:outline-none max-w-[110px] truncate"
-          >
-            {dropdownTaskTypes.map((tt) => (
-              <option key={tt.id} value={tt.id}>
-                Type: {tt.name}
-              </option>
-            ))}
-          </select>
+            onChange={(val) => updateTask(selectedTask.id, { task_type_id: val })}
+            options={dropdownTaskTypes.map((tt) => ({
+              value: tt.id,
+              label: tt.name,
+              color: tt.color_hex || tt.color || '#ec4899',
+            }))}
+            prefix="Type: "
+            buttonClassName="bg-pink-50/70 text-pink-700 border-pink-200 dark:bg-pink-500/15 dark:text-pink-300 dark:border-pink-500/40"
+          />
 
         </div>
 
         <button
           onClick={() => setSelectedTaskId(null)}
-          className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0"
+          className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
           title="Close panel"
         >
           <X className="w-5 h-5" />
@@ -143,56 +143,61 @@ export const TaskDetailPanel = () => {
             onChange={(e) => setTitle(e.target.value)}
             onBlur={handleTitleBlur}
             placeholder="Task Title..."
-            className="w-full bg-transparent text-base font-bold text-white placeholder-slate-500 focus:outline-none resize-none"
+            className="w-full bg-transparent text-base font-bold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none resize-none"
           />
         </div>
 
         {/* Assignee & Due Date Selectors */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
-              <UserCheck className="w-3 h-3 text-blue-400" /> Assigned To
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+              <UserCheck className="w-3 h-3 text-blue-500 dark:text-blue-400" /> Assigned To
             </label>
-            <select
+            <ModernDropdown
               value={selectedTask.assigned_to || ''}
-              onChange={(e) => handleAssigneeChange(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-[#28292f] border border-slate-700/80 rounded-xl text-white focus:outline-none truncate"
-            >
-              <option value="">Unassigned</option>
-              {allUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name || u.email}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => handleAssigneeChange(val)}
+              options={[
+                { value: '', label: 'Unassigned', icon: User },
+                ...allUsers.map((u) => ({
+                  value: u.id,
+                  label: u.full_name || u.email,
+                  subtext: u.email,
+                  avatarUrl: getAvatarUrl(u.avatar_id, u.full_name || u.email),
+                })),
+              ]}
+              fullWidth
+              searchable
+              searchPlaceholder="Search assignee..."
+              placeholder="Unassigned"
+            />
           </div>
 
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 flex items-center gap-1">
-              <Calendar className="w-3 h-3 text-emerald-400" /> Due Date
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-emerald-500 dark:text-emerald-400" /> Due Date
             </label>
             <input
               type="date"
               value={selectedTask.due_date ? selectedTask.due_date.split('T')[0] : ''}
               onChange={(e) => updateTask(selectedTask.id, { due_date: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              className="w-full px-2.5 py-1.5 bg-[#28292f] border border-slate-700/80 rounded-xl text-white focus:outline-none"
+              className="w-full px-2.5 py-1.5 bg-white dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/80 rounded-xl text-slate-800 dark:text-white focus:outline-none shadow-xs cursor-pointer"
             />
           </div>
         </div>
 
         {/* Dynamic Generic Task Tags Section (TickTick Style Many-to-Many) */}
         <div className="space-y-2 pt-1">
-          <label className="block text-[11px] font-medium text-slate-400 flex items-center gap-1">
-            <Tag className="w-3 h-3 text-blue-400" /> Generic Task Tags (#hashtags)
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <Tag className="w-3 h-3 text-blue-500 dark:text-blue-400" /> Generic Task Tags (#hashtags)
           </label>
 
           <div className="flex flex-wrap items-center gap-1.5">
             {taskTags.map((tg) => (
               <span
                 key={tg.id}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-sm"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border shadow-xs"
                 style={{
-                  backgroundColor: `${tg.color_hex || tg.color || '#3b82f6'}20`,
+                  backgroundColor: `${tg.color_hex || tg.color || '#3b82f6'}18`,
                   color: tg.color_hex || tg.color || '#3b82f6',
                   borderColor: `${tg.color_hex || tg.color || '#3b82f6'}40`
                 }}
@@ -201,7 +206,7 @@ export const TaskDetailPanel = () => {
                 <button
                   type="button"
                   onClick={() => removeTagFromTask(selectedTask.id, tg.id)}
-                  className="hover:opacity-75 focus:outline-none ml-0.5 text-xs font-bold"
+                  className="hover:opacity-75 focus:outline-none ml-0.5 text-xs font-bold cursor-pointer"
                   title="Remove Tag"
                 >
                   ×
@@ -210,22 +215,19 @@ export const TaskDetailPanel = () => {
             ))}
 
             {unattachedTags.length > 0 && (
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    addTagToTask(selectedTask.id, e.target.value);
-                    e.target.value = '';
-                  }
+              <ModernDropdown
+                value=""
+                onChange={(val) => {
+                  if (val) addTagToTask(selectedTask.id, val);
                 }}
-                className="bg-[#28292f] text-slate-400 hover:text-white border border-slate-700/70 rounded-full px-2 py-0.5 text-[11px] focus:outline-none cursor-pointer"
-              >
-                <option value="">+ Add Tag</option>
-                {unattachedTags.map((dt) => (
-                  <option key={dt.id} value={dt.id}>
-                    #{dt.name}
-                  </option>
-                ))}
-              </select>
+                options={unattachedTags.map((dt) => ({
+                  value: dt.id,
+                  label: `#${dt.name}`,
+                  color: dt.color_hex || dt.color,
+                }))}
+                placeholder="+ Add Tag"
+                buttonClassName="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+              />
             )}
           </div>
         </div>
@@ -233,13 +235,13 @@ export const TaskDetailPanel = () => {
         {/* Markdown-Supported Description Area */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Description (Markdown)</span>
-            <div className="flex bg-[#28292f] p-0.5 rounded-lg border border-slate-700/60">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Description (Markdown)</span>
+            <div className="flex bg-slate-200/70 dark:bg-[#28292f] p-0.5 rounded-lg border border-slate-300/60 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => setDescTab('write')}
-                className={`px-2 py-0.5 text-[11px] font-medium rounded ${
-                  descTab === 'write' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all cursor-pointer ${
+                  descTab === 'write' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 Write
@@ -247,8 +249,8 @@ export const TaskDetailPanel = () => {
               <button
                 type="button"
                 onClick={() => setDescTab('preview')}
-                className={`px-2 py-0.5 text-[11px] font-medium rounded ${
-                  descTab === 'preview' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all cursor-pointer ${
+                  descTab === 'preview' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 Preview
@@ -263,14 +265,14 @@ export const TaskDetailPanel = () => {
               onChange={(e) => setDescription(e.target.value)}
               onBlur={handleDescriptionBlur}
               placeholder="Add description... Supports Markdown headers, lists, code blocks"
-              className="w-full p-3 bg-[#28292f] border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+              className="w-full p-3 bg-white dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono shadow-xs"
             />
           ) : (
-            <div className="p-3 bg-[#28292f] border border-slate-700/80 rounded-xl text-xs text-slate-200 prose prose-invert max-w-none min-h-[80px]">
+            <div className="p-3 bg-white dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-800 dark:text-slate-200 prose dark:prose-invert max-w-none min-h-[80px] shadow-xs">
               {description.trim() ? (
                 <ReactMarkdown>{description}</ReactMarkdown>
               ) : (
-                <span className="text-slate-500 italic">No description provided.</span>
+                <span className="text-slate-400 dark:text-slate-500 italic">No description provided.</span>
               )}
             </div>
           )}
@@ -288,13 +290,13 @@ export const TaskDetailPanel = () => {
       </div>
 
       {/* Footer Actions */}
-      <div className="p-3 border-t border-slate-800 flex items-center justify-between">
-        <span className="text-[11px] text-slate-500">
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-transparent flex items-center justify-between">
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">
           Created: {selectedTask.created_at ? format(parseISO(selectedTask.created_at), 'MMM d, h:mm a') : 'Recently'}
         </span>
         <button
           onClick={() => deleteTask(selectedTask.id)}
-          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800/50 rounded-xl transition-colors flex items-center gap-1 text-xs"
+          className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800/50 dark:hover:text-red-400 rounded-xl transition-colors flex items-center gap-1 text-xs cursor-pointer"
           title="Delete Task"
         >
           <Trash2 className="w-4 h-4" />

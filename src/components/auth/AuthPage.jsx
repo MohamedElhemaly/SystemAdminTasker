@@ -99,7 +99,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
   const passwordStrength = !isLogin ? getPasswordStrength(password) : null;
 
   return (
-    <div className="min-h-screen w-screen bg-[#141418] text-slate-100 flex flex-col justify-center items-center p-4 selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen w-screen bg-slate-50 dark:bg-[#141418] text-slate-900 dark:text-slate-100 flex flex-col justify-center items-center p-4 selection:bg-blue-600 selection:text-white">
       
       {/* Background Glow Effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -108,29 +108,29 @@ export const AuthPage = ({ initialMode = 'login' }) => {
         <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-purple-600/6 rounded-full blur-[80px]" />
       </div>
 
-      <div className="w-full max-w-md bg-[#1f1f23]/95 backdrop-blur-xl text-slate-100 border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/40 relative z-10 max-h-[95vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-white/95 dark:bg-[#1f1f23]/95 backdrop-blur-xl text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-xl relative z-10 max-h-[95vh] overflow-y-auto">
         
         {/* Branding Header */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-xl shadow-blue-500/30 mb-4 relative">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4 relative">
             <CheckCircle2 className="w-9 h-9 text-white" />
-            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-blue-600 to-purple-500 blur-md opacity-40 -z-10" />
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-blue-600 to-purple-500 blur-md opacity-30 -z-10" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">Enterprise TaskManager</h1>
-          <p className="text-xs text-slate-400 mt-1.5 max-w-xs">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Enterprise TaskManager</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-xs">
             Secure closed-team workspace with role-based access control & task delegation
           </p>
         </div>
 
         {/* View Toggle Tabs (/login vs /signup) */}
-        <div className="flex bg-[#28292f] p-1 rounded-2xl mb-6 border border-slate-700/60">
+        <div className="flex bg-slate-100 dark:bg-[#28292f] p-1 rounded-2xl mb-6 border border-slate-200 dark:border-slate-700/60">
           <button
             id="auth-tab-signin"
             type="button"
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer ${
               isLogin 
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/25' 
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-md' 
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
             onClick={() => handleModeSwitch(true)}
           >
@@ -139,10 +139,10 @@ export const AuthPage = ({ initialMode = 'login' }) => {
           <button
             id="auth-tab-signup"
             type="button"
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer ${
               !isLogin 
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-lg shadow-blue-500/25' 
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-500 text-white shadow-md' 
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
             onClick={() => handleModeSwitch(false)}
           >
@@ -152,7 +152,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
 
         {/* Error Display */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-medium flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
             <Shield className="w-4 h-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -163,7 +163,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
             <>
               {/* Full Name */}
               <div>
-                <label htmlFor="auth-fullname" className="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
+                <label htmlFor="auth-fullname" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Full Name</label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                   <input
@@ -173,7 +173,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
                     placeholder="e.g. Ahmed Hassan"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#28292f] border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all shadow-xs"
                     autoComplete="name"
                   />
                 </div>
@@ -181,8 +181,8 @@ export const AuthPage = ({ initialMode = 'login' }) => {
 
               {/* Built-in Avatar Selector */}
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2">Choose Your Avatar</label>
-                <div className="grid grid-cols-5 gap-2 p-3 rounded-xl bg-[#28292f] border border-slate-700/60 max-h-48 overflow-y-auto">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Choose Your Avatar</label>
+                <div className="grid grid-cols-5 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/60 max-h-48 overflow-y-auto">
                   {BUILTIN_AVATARS.map((av) => (
                     <button
                       key={av.id}
@@ -209,7 +209,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
 
           {/* Email */}
           <div>
-            <label htmlFor="auth-email" className="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
+            <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Email Address</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
               <input
@@ -219,7 +219,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
                 placeholder="name@team.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-[#28292f] border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all shadow-xs"
                 autoComplete="email"
               />
             </div>
@@ -227,7 +227,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
 
           {/* Password */}
           <div>
-            <label htmlFor="auth-password" className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+            <label htmlFor="auth-password" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
               <input
@@ -238,13 +238,13 @@ export const AuthPage = ({ initialMode = 'login' }) => {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-2.5 bg-[#28292f] border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all"
+                className="w-full pl-10 pr-12 py-2.5 bg-slate-50 dark:bg-[#28292f] border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all shadow-xs"
                 autoComplete={isLogin ? 'current-password' : 'new-password'}
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition-colors"
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -282,7 +282,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
           {/* Confirm Password (signup only) */}
           {!isLogin && (
             <div>
-              <label htmlFor="auth-confirm-password" className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label htmlFor="auth-confirm-password" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Confirm Password
               </label>
               <div className="relative">
@@ -295,32 +295,32 @@ export const AuthPage = ({ initialMode = 'login' }) => {
                   placeholder="Re-enter your password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={`w-full pl-10 pr-12 py-2.5 bg-[#28292f] border rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 transition-all ${
+                  className={`w-full pl-10 pr-12 py-2.5 bg-slate-50 dark:bg-[#28292f] border rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 transition-all shadow-xs ${
                     confirmPassword && confirmPassword !== password 
                       ? 'border-red-500/60 focus:border-red-500 focus:ring-red-500/30' 
                       : confirmPassword && confirmPassword === password
                         ? 'border-emerald-500/60 focus:border-emerald-500 focus:ring-emerald-500/30'
-                        : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/30'
+                        : 'border-slate-200 dark:border-slate-700 focus:border-blue-500 focus:ring-blue-500/30'
                   }`}
                   autoComplete="new-password"
                 />
                 <button 
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition-colors"
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
                   tabIndex={-1}
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {confirmPassword && confirmPassword !== password && (
-                <p className="text-[10px] text-red-400 mt-1 ml-1 flex items-center gap-1">
+                <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 ml-1 flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
                   Passwords do not match
                 </p>
               )}
               {confirmPassword && confirmPassword === password && password.length >= 6 && (
-                <p className="text-[10px] text-emerald-400 mt-1 ml-1 flex items-center gap-1">
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 ml-1 flex items-center gap-1">
                   <Check className="w-3 h-3" />
                   Passwords match
                 </p>
@@ -333,7 +333,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
             id="auth-submit-btn"
             type="submit"
             disabled={loading || (!isLogin && confirmPassword !== password)}
-            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed mt-2 relative overflow-hidden group"
+            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed mt-2 relative overflow-hidden group cursor-pointer"
           >
             <span className="relative z-10">
               {loading ? 'Authenticating...' : (isLogin ? 'Sign In to Workspace' : 'Create Account')}
@@ -346,13 +346,13 @@ export const AuthPage = ({ initialMode = 'login' }) => {
         </form>
 
         {/* Toggle Link */}
-        <p className="text-center text-xs text-slate-400 mt-5">
+        <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-5">
           {isLogin ? (
             <>Don't have an account?{' '}
               <button 
                 type="button"
                 onClick={() => handleModeSwitch(false)}
-                className="text-blue-400 hover:text-blue-300 font-semibold transition-colors"
+                className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors cursor-pointer"
               >
                 Create one
               </button>
@@ -362,7 +362,7 @@ export const AuthPage = ({ initialMode = 'login' }) => {
               <button 
                 type="button"
                 onClick={() => handleModeSwitch(true)}
-                className="text-blue-400 hover:text-blue-300 font-semibold transition-colors"
+                className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors cursor-pointer"
               >
                 Sign in
               </button>
@@ -371,14 +371,14 @@ export const AuthPage = ({ initialMode = 'login' }) => {
         </p>
 
         {/* Demo Fast Access Entry */}
-        <div className="mt-5 pt-4 border-t border-slate-800/80">
+        <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800/80">
           <button
             id="auth-demo-btn"
             type="button"
             onClick={enableDemoMode}
-            className="w-full py-2.5 px-4 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2 group"
+            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center gap-2 group cursor-pointer shadow-xs"
           >
-            <Sparkles className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
+            <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-400 group-hover:rotate-12 transition-transform" />
             <span>Try Interactive Demo (No Account Needed)</span>
           </button>
           {!isConfigured && (

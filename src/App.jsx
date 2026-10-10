@@ -14,7 +14,24 @@ import { ProfileSettingsModal } from './components/profile/ProfileSettingsModal'
 import { CreateListModal } from './components/sidebar/CreateListModal';
 import { CreateTeamModal } from './components/sidebar/CreateTeamModal';
 import { MobileBottomNav } from './components/common/MobileBottomNav';
-import { Toaster } from 'react-hot-toast';
+import { ClickFeedbackProvider } from './components/common/ClickFeedback';
+import toast, { Toaster, ToastBar, useToasterStore } from 'react-hot-toast';
+
+// ─────────────────────────────────────────────────
+// Auto Toast Limit Manager (limits active toasts to max 3)
+// ─────────────────────────────────────────────────
+const ToastLimitManager = ({ limit = 3 }) => {
+  const { toasts } = useToasterStore();
+
+  React.useEffect(() => {
+    toasts
+      .filter((t) => t.visible)
+      .filter((_, i) => i >= limit)
+      .forEach((t) => toast.dismiss(t.id));
+  }, [toasts, limit]);
+
+  return null;
+};
 
 // ─────────────────────────────────────────────────
 // Main Dashboard Layout (authenticated users only)
@@ -52,7 +69,7 @@ const DashboardLayout = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#18181c] font-sans antialiased text-slate-100 selection:bg-blue-600 selection:text-white">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-100 dark:bg-[#18181c] font-sans antialiased text-slate-900 dark:text-slate-100 selection:bg-blue-600 selection:text-white">
       
       {/* 1. Left Sidebar */}
       <Sidebar
@@ -113,76 +130,117 @@ const DashboardLayout = () => {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <TaskProvider>
-          
-          <Routes>
-            {/* Public Routes: Auth Pages */}
-            <Route 
-              path="/login" 
-              element={
-                <PublicRoute>
-                  <AuthPage initialMode="login" />
-                </PublicRoute>
-              } 
-            />
-            <Route 
-              path="/signup" 
-              element={
-                <PublicRoute>
-                  <AuthPage initialMode="signup" />
-                </PublicRoute>
-              } 
-            />
+      <ClickFeedbackProvider>
+        <AuthProvider>
+          <TaskProvider>
+            
+            <Routes>
+              {/* Public Routes: Auth Pages */}
+              <Route 
+                path="/login" 
+                element={
+                  <PublicRoute>
+                    <AuthPage initialMode="login" />
+                  </PublicRoute>
+                } 
+              />
+              <Route 
+                path="/signup" 
+                element={
+                  <PublicRoute>
+                    <AuthPage initialMode="signup" />
+                  </PublicRoute>
+                } 
+              />
 
-            {/* Protected Routes */}
-            <Route 
-              path="/" 
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout />
-                </ProtectedRoute>
-              } 
-            />
+              {/* Protected Routes */}
+              <Route 
+                path="/" 
+                element={
+                  <ProtectedRoute>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                } 
+              />
 
-            <Route 
-              path="/settings/profile" 
-              element={
-                <ProtectedRoute>
-                  <ProfileSettingsPage />
-                </ProtectedRoute>
-              } 
-            />
+              <Route 
+                path="/settings/profile" 
+                element={
+                  <ProtectedRoute>
+                    <ProfileSettingsPage />
+                  </ProtectedRoute>
+                } 
+              />
 
-            <Route 
-              path="/admin" 
-              element={
-                <ProtectedRoute requiredRole="manager">
-                  <AdminDashboard />
-                </ProtectedRoute>
-              } 
-            />
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute requiredRole="manager">
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                } 
+              />
 
-            {/* Catch-all redirect */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Catch-all redirect */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
 
-          {/* Real-time Toast Notification Provider (always visible) */}
-          <Toaster 
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: '#1f1f23',
-                color: '#fff',
-                border: '1px solid #334155',
-                borderRadius: '12px',
-                fontSize: '13px'
-              }
-            }}
-          />
+            {/* Real-time Toast Notification Provider (Anti-spam with auto-limit, interactive dismiss, and clean styling) */}
+            <ToastLimitManager limit={3} />
+            <Toaster 
+              position="bottom-right"
+              gutter={8}
+              toastOptions={{
+                duration: 2500,
+                className: '!bg-white/95 dark:!bg-[#1c1d22]/95 !backdrop-blur-md !text-slate-800 dark:!text-slate-100 !border !border-slate-200/80 dark:!border-slate-700/80 !shadow-2xl !rounded-xl !text-xs !font-medium !p-2.5',
+                success: {
+                  duration: 2500,
+                  iconTheme: {
+                    primary: '#10b981',
+                    secondary: '#ffffff',
+                  },
+                },
+                error: {
+                  duration: 3500,
+                  iconTheme: {
+                    primary: '#ef4444',
+                    secondary: '#ffffff',
+                  },
+                },
+              }}
+            >
+              {(t) => (
+                <ToastBar toast={t} style={{ ...t.style, padding: '8px 12px' }}>
+                  {({ icon, message }) => (
+                    <div 
+                      onClick={() => toast.dismiss(t.id)}
+                      className="flex items-center gap-2 cursor-pointer w-full select-none"
+                      title="Click to dismiss"
+                    >
+                      {icon}
+                      <div className="flex-1 text-xs font-medium leading-tight">{message}</div>
+                      {t.type !== 'loading' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toast.dismiss(t.id);
+                          }}
+                          className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5 ml-1 rounded transition-colors text-xs opacity-70 hover:opacity-100"
+                          title="Close notification"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </ToastBar>
+              )}
+            </Toaster>
 
-        </TaskProvider>
-      </AuthProvider>
+          </TaskProvider>
+        </AuthProvider>
+      </ClickFeedbackProvider>
     </BrowserRouter>
   );
 }

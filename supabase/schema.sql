@@ -196,27 +196,21 @@ EXCEPTION
     WHEN OTHERS THEN NULL;
 END $$;
 
--- 7. Storage Setup for Task Files (EXCEL/CSV ONLY + Task Isolation Download Policy)
+-- 7. Storage Setup for Task Attachments & Files
+-- Photos & Images are stored in the public 'avatars' CDN bucket with unrestricted MIME types
+-- Spreadsheets (Excel/CSV) are stored in 'task_files' bucket
 INSERT INTO storage.buckets (id, name, public, allowed_mime_types) 
 VALUES (
     'task_files', 
     'task_files', 
-    false, -- Private bucket for strict RLS download security
-    ARRAY[
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-        'text/csv'
-    ]
+    true,
+    NULL -- All permitted attachment MIME types allowed
 ) 
 ON CONFLICT (id) DO UPDATE SET 
-    public = false,
-    allowed_mime_types = ARRAY[
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-        'text/csv'
-    ];
+    public = true,
+    allowed_mime_types = NULL;
 
--- 8. Helper Function for Auth User Role Retrieval
+-- 8. Helper Functions for Auth & RBAC (SECURITY DEFINER to prevent RLS recursion)
 CREATE OR REPLACE FUNCTION public.get_auth_user_role()
 RETURNS user_role_enum AS $$
 DECLARE
@@ -225,7 +219,82 @@ BEGIN
     SELECT role INTO v_role FROM public.profiles WHERE id = auth.uid();
     RETURN COALESCE(v_role, 'member'::user_role_enum);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public;
+
+-- Helper: Check if a user has an acknowledgement record on a task (Bypasses task_acknowledgements RLS)
+CREATE OR REPLACE FUNCTION public.check_user_is_task_acknowledged(p_task_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.task_acknowledgements
+        WHERE task_id = p_task_id AND user_id = p_user_id
+    );
+$$;
+
+-- Helper: Check if a user has list/team access to a list (Bypasses lists & team_members RLS)
+CREATE OR REPLACE FUNCTION public.check_user_has_list_access(p_list_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+    SELECT CASE 
+        WHEN p_list_id IS NULL THEN FALSE
+        ELSE EXISTS (
+            SELECT 1 FROM public.lists l
+            WHERE l.id = p_list_id AND (
+                l.user_id = p_user_id OR 
+                (l.team_id IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM public.team_members tm 
+                    WHERE tm.team_id = l.team_id AND tm.user_id = p_user_id
+                ))
+            )
+        )
+    END;
+$$;
+
+-- Helper: Check if a user can access parent task (Bypasses tasks RLS for child tables)
+CREATE OR REPLACE FUNCTION public.check_user_can_access_parent_task(p_task_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.tasks t
+        WHERE t.id = p_task_id
+          AND (
+              t.created_by = p_user_id OR
+              t.assigned_to = p_user_id OR
+              (SELECT role FROM public.profiles WHERE id = p_user_id) = 'manager' OR
+              EXISTS (
+                  SELECT 1 FROM public.task_acknowledgements ack
+                  WHERE ack.task_id = t.id AND ack.user_id = p_user_id
+              ) OR
+              (t.list_id IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM public.lists l
+                  WHERE l.id = t.list_id AND (
+                      l.user_id = p_user_id OR
+                      (l.team_id IS NOT NULL AND EXISTS (
+                          SELECT 1 FROM public.team_members tm
+                          WHERE tm.team_id = l.team_id AND tm.user_id = p_user_id
+                      ))
+                  )
+              ))
+          )
+    );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_auth_user_role() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.check_user_is_task_acknowledged(UUID, UUID) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.check_user_has_list_access(UUID, UUID) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.check_user_can_access_parent_task(UUID, UUID) TO authenticated, anon;
 
 -- Storage Download Security RLS Policy
 DROP POLICY IF EXISTS "Task files select access" ON storage.objects;
@@ -242,7 +311,7 @@ CREATE POLICY "Task files select access" ON storage.objects FOR SELECT TO authen
               AND (
                 t.created_by = auth.uid() OR 
                 t.assigned_to = auth.uid() OR 
-                EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
+                public.check_user_is_task_acknowledged(t.id, auth.uid())
               )
         )
     )
@@ -488,44 +557,22 @@ CREATE POLICY "Dropdown Tags DELETE" ON public.dropdown_tags
 CREATE POLICY "Task Tag Mapping SELECT" ON public.task_tag_mapping
     FOR SELECT TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_tag_mapping.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager' OR
-                  EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_tag_mapping.task_id, auth.uid())
     );
 
 CREATE POLICY "Task Tag Mapping INSERT" ON public.task_tag_mapping
     FOR INSERT TO authenticated
     WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_tag_mapping.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_tag_mapping.task_id, auth.uid())
     );
 
 CREATE POLICY "Task Tag Mapping DELETE" ON public.task_tag_mapping
     FOR DELETE TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_tag_mapping.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_tag_mapping.task_id, auth.uid())
     );
 
 
@@ -624,19 +671,8 @@ CREATE POLICY "Tasks RBAC SELECT Policy" ON public.tasks
         public.get_auth_user_role() = 'manager' OR
         created_by = auth.uid() OR
         assigned_to = auth.uid() OR
-        EXISTS (
-            SELECT 1 FROM public.task_acknowledgements 
-            WHERE task_id = public.tasks.id AND user_id = auth.uid()
-        ) OR
-        EXISTS (
-            SELECT 1 FROM public.lists 
-            WHERE id = public.tasks.list_id AND (
-                user_id = auth.uid() OR 
-                team_id IN (
-                    SELECT team_id FROM public.team_members WHERE user_id = auth.uid()
-                )
-            )
-        )
+        public.check_user_is_task_acknowledged(public.tasks.id, auth.uid()) OR
+        public.check_user_has_list_access(public.tasks.list_id, auth.uid())
     );
 
 CREATE POLICY "Tasks INSERT Policy" ON public.tasks
@@ -658,19 +694,13 @@ CREATE POLICY "Tasks UPDATE Policy" ON public.tasks
         created_by = auth.uid() OR
         assigned_to = auth.uid() OR
         public.get_auth_user_role() = 'manager' OR
-        EXISTS (
-            SELECT 1 FROM public.task_acknowledgements 
-            WHERE task_id = public.tasks.id AND user_id = auth.uid()
-        )
+        public.check_user_is_task_acknowledged(public.tasks.id, auth.uid())
     )
     WITH CHECK (
         created_by = auth.uid() OR
         assigned_to = auth.uid() OR
         public.get_auth_user_role() = 'manager' OR
-        EXISTS (
-            SELECT 1 FROM public.task_acknowledgements 
-            WHERE task_id = public.tasks.id AND user_id = auth.uid()
-        )
+        public.check_user_is_task_acknowledged(public.tasks.id, auth.uid())
     );
 
 CREATE POLICY "Tasks DELETE Policy" ON public.tasks
@@ -689,78 +719,40 @@ CREATE POLICY "Tasks DELETE Policy" ON public.tasks
 CREATE POLICY "Subtasks SELECT" ON public.subtasks
     FOR SELECT TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.subtasks.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager' OR
-                  EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.subtasks.task_id, auth.uid())
     );
 
 CREATE POLICY "Subtasks INSERT" ON public.subtasks
     FOR INSERT TO authenticated
     WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.subtasks.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.subtasks.task_id, auth.uid())
     );
 
 CREATE POLICY "Subtasks UPDATE" ON public.subtasks
     FOR UPDATE TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.subtasks.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager' OR
-                  EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.subtasks.task_id, auth.uid())
     )
     WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.subtasks.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager' OR
-                  EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.subtasks.task_id, auth.uid())
     );
 
 CREATE POLICY "Subtasks DELETE" ON public.subtasks
     FOR DELETE TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.subtasks.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.subtasks.task_id, auth.uid())
     );
 
 
 -- ==========================================================
 -- TASK ACKNOWLEDGEMENTS POLICIES
 -- ==========================================================
--- SELECT: Visible to users who can see the parent task.
+-- SELECT: Visible to users who can see the parent task or the tagged user.
 -- INSERT: Managers/task creators can tag team members for acknowledgement.
 -- UPDATE: STRICT — ONLY the tagged user can acknowledge their own record.
 --         user_id MUST equal auth.uid(). No one else can flip this flag.
@@ -770,28 +762,15 @@ CREATE POLICY "Task Ack SELECT" ON public.task_acknowledgements
     FOR SELECT TO authenticated
     USING (
         user_id = auth.uid() OR
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_acknowledgements.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  t.assigned_to = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_acknowledgements.task_id, auth.uid())
     );
 
 CREATE POLICY "Task Ack INSERT" ON public.task_acknowledgements
     FOR INSERT TO authenticated
     WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_acknowledgements.task_id
-              AND (
-                  t.created_by = auth.uid() OR
-                  public.get_auth_user_role() = 'manager'
-              )
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_acknowledgements.task_id, auth.uid())
     );
 
 CREATE POLICY "Task Ack STRICT UPDATE" ON public.task_acknowledgements
@@ -802,11 +781,8 @@ CREATE POLICY "Task Ack STRICT UPDATE" ON public.task_acknowledgements
 CREATE POLICY "Task Ack DELETE" ON public.task_acknowledgements
     FOR DELETE TO authenticated
     USING (
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_acknowledgements.task_id
-              AND (t.created_by = auth.uid() OR public.get_auth_user_role() = 'manager')
-        )
+        public.get_auth_user_role() = 'manager' OR
+        public.check_user_can_access_parent_task(public.task_acknowledgements.task_id, auth.uid())
     );
 
 
@@ -822,14 +798,7 @@ CREATE POLICY "Task Attachments SELECT Policy" ON public.task_attachments
     USING (
         public.get_auth_user_role() = 'manager' OR
         uploaded_by = auth.uid() OR
-        EXISTS (
-            SELECT 1 FROM public.tasks t
-            WHERE t.id = public.task_attachments.task_id AND (
-                t.created_by = auth.uid() OR
-                t.assigned_to = auth.uid() OR
-                EXISTS (SELECT 1 FROM public.task_acknowledgements WHERE task_id = t.id AND user_id = auth.uid())
-            )
-        )
+        public.check_user_can_access_parent_task(public.task_attachments.task_id, auth.uid())
     );
 
 CREATE POLICY "Task Attachments INSERT Policy" ON public.task_attachments
