@@ -143,6 +143,9 @@ export const AuthProvider = ({ children }) => {
     if (msg.includes('refresh_token_not_found') || msg.includes('session_not_found')) {
       return 'Your session has expired. Please sign in again.';
     }
+    if (msg.includes('Database error saving new user') || msg.includes('Database error creating new user')) {
+      return 'Database error: The user creation trigger failed in Supabase. If you already created an account with this email, please click "Sign In" above. To fix this permanently in Supabase, run the fix_signup_error.sql script in your Supabase SQL Editor.';
+    }
     return msg || 'An unexpected authentication error occurred. Please try again.';
   };
 

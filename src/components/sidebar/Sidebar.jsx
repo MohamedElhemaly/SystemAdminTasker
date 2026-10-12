@@ -5,11 +5,13 @@ import { getAvatarUrl } from '../../lib/avatars';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Plus, ChevronLeft, 
   ChevronRight, LogOut, User, Sparkles, Shield, GitFork, Settings, 
-  CheckSquare, ShieldAlert, MonitorDown 
+  CheckSquare, ShieldAlert, MonitorDown, Bell, LayoutGrid 
 } from 'lucide-react';
 import { isToday, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { SoundToggle } from '../common/SoundToggle';
+import { useNotifications } from '../../context/NotificationContext';
+import { NotificationPopover } from '../notifications/NotificationPopover';
 
 export const Sidebar = ({ 
   isCollapsed, 
@@ -24,6 +26,8 @@ export const Sidebar = ({
 }) => {
   const { user, profile, isDemoMode, signOut } = useAuth();
   const { lists = [], teams = [], allTasks = [], selectedListId, setSelectedListId } = useTasks();
+  const { unreadCount = 0 } = useNotifications();
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Compute Task Counts for Smart Lists with safe fallback handling
   const countInbox = (allTasks || []).filter(t => !t?.is_completed).length;
@@ -108,42 +112,68 @@ export const Sidebar = ({
         </button>
       </div>
 
-      {/* View Mode Switcher (Tasks vs Delegation Map vs Admin) */}
+      {/* View Mode Switcher (Tasks vs Calendar vs Map vs Admin) */}
       <div className="p-2 border-b border-slate-200 dark:border-slate-800/80">
-        <div className={`flex ${isCollapsed ? 'flex-col' : ''} bg-slate-200/60 dark:bg-[#23242a] p-1 rounded-xl border border-slate-300/60 dark:border-slate-800 gap-1`}>
+        <div className={`${isCollapsed ? 'flex flex-col gap-1' : 'grid grid-cols-2 gap-1'} bg-slate-200/60 dark:bg-[#23242a] p-1 rounded-xl border border-slate-300/60 dark:border-slate-800`}>
           <button
             type="button"
             onClick={() => setActiveView('tasks')}
-            className={`flex-1 py-1.5 px-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 transition-all ${
-              activeView === 'tasks' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+            className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              activeView === 'tasks' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
             }`}
+            title="Task List"
           >
             <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-            {!isCollapsed && <span>Tasks</span>}
+            {!isCollapsed && <span className="truncate">Tasks</span>}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('matrix')}
+            className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              activeView === 'matrix' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
+            }`}
+            title="Eisenhower Matrix View (Urgent & Important)"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+            {!isCollapsed && <span className="truncate">Matrix</span>}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('calendar')}
+            className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              activeView === 'calendar' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
+            }`}
+            title="Full Month Calendar View & Google 2-Way Sync"
+          >
+            <Calendar className="w-3.5 h-3.5 shrink-0" />
+            {!isCollapsed && <span className="truncate">Calendar</span>}
           </button>
           
           <button
             type="button"
             onClick={() => setActiveView('map')}
-            className={`flex-1 py-1.5 px-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 transition-all ${
-              activeView === 'map' ? 'bg-pink-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+            className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              activeView === 'map' ? 'bg-pink-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
             }`}
+            title="Task Delegation Map"
           >
             <GitFork className="w-3.5 h-3.5 shrink-0" />
-            {!isCollapsed && <span>Map</span>}
+            {!isCollapsed && <span className="truncate">Map</span>}
           </button>
 
           {userRole === 'manager' && (
             <button
               type="button"
               onClick={() => setActiveView('admin')}
-              className={`flex-1 py-1.5 px-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 transition-all ${
-                activeView === 'admin' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+              className={`col-span-2 py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                activeView === 'admin' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
               }`}
               title="Super-Admin Dashboard (Manager ONLY)"
             >
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-              {!isCollapsed && <span>Admin</span>}
+              {!isCollapsed && <span className="truncate">Admin</span>}
             </button>
           )}
         </div>
@@ -300,7 +330,45 @@ export const Sidebar = ({
       </div>
 
       {/* Footer Profile & Auth Actions */}
-      <div className="p-2 border-t border-slate-200 dark:border-slate-800/80 space-y-1.5">
+      <div className="p-2 border-t border-slate-200 dark:border-slate-800/80 space-y-1.5 relative">
+        {/* Notifications & Activity Popover Trigger (TickTick Style) */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              isNotificationsOpen 
+                ? 'bg-blue-600/15 text-blue-500 border border-blue-500/30' 
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+            }`}
+            title="Notifications & Activities"
+          >
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Bell className="w-4 h-4 shrink-0" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center shadow-xs">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+              {!isCollapsed && <span>Notifications</span>}
+            </div>
+
+            {!isCollapsed && unreadCount > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] bg-red-500/10 text-red-500 border border-red-500/20 font-bold rounded-full">
+                {unreadCount} new
+              </span>
+            )}
+          </button>
+
+          <NotificationPopover
+            isOpen={isNotificationsOpen}
+            onClose={() => setIsNotificationsOpen(false)}
+            setActiveView={setActiveView}
+          />
+        </div>
+
         <div className={`grid ${isCollapsed ? 'grid-cols-1' : 'grid-cols-2'} gap-1.5`}>
           <ThemeToggle isCollapsed={isCollapsed} />
           <SoundToggle isCollapsed={isCollapsed} />

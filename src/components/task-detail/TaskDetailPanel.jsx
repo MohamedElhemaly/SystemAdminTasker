@@ -7,11 +7,13 @@ import { TaskAttachmentsSection } from './TaskAttachmentsSection';
 import ReactMarkdown from 'react-markdown';
 import { 
   X, Calendar, Flag, Folder, Users, User, Trash2, 
-  FileText, UserCheck, Shield, Tag
+  FileText, UserCheck, Shield, Tag, RotateCw, LayoutGrid
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { ModernDropdown } from '../common/ModernDropdown';
+import { RepeatDropdown } from '../common/RepeatDropdown';
+import { AssignMembersDropdown } from '../common/AssignMembersDropdown';
 import { getAvatarUrl } from '../../lib/avatars';
 
 export const TaskDetailPanel = () => {
@@ -151,24 +153,14 @@ export const TaskDetailPanel = () => {
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-              <UserCheck className="w-3 h-3 text-blue-500 dark:text-blue-400" /> Assigned To
+              <UserCheck className="w-3 h-3 text-blue-500 dark:text-blue-400" /> Assigned Members
             </label>
-            <ModernDropdown
-              value={selectedTask.assigned_to || ''}
-              onChange={(val) => handleAssigneeChange(val)}
-              options={[
-                { value: '', label: 'Unassigned', icon: User },
-                ...allUsers.map((u) => ({
-                  value: u.id,
-                  label: u.full_name || u.email,
-                  subtext: u.email,
-                  avatarUrl: getAvatarUrl(u.avatar_id, u.full_name || u.email),
-                })),
-              ]}
-              fullWidth
-              searchable
-              searchPlaceholder="Search assignee..."
-              placeholder="Unassigned"
+            <AssignMembersDropdown
+              taskType={selectedTask.task_type === 'team' ? 'Team' : 'Personal'}
+              selectedUserIds={selectedTask.assigned_users || (selectedTask.assigned_to ? [selectedTask.assigned_to] : [])}
+              onChange={(newIds) => updateTask(selectedTask.id, { assigned_users: newIds })}
+              allUsers={allUsers}
+              buttonClassName="w-full justify-between"
             />
           </div>
 
@@ -182,6 +174,81 @@ export const TaskDetailPanel = () => {
               onChange={(e) => updateTask(selectedTask.id, { due_date: e.target.value ? new Date(e.target.value).toISOString() : null })}
               className="w-full px-2.5 py-1.5 bg-white dark:bg-[#28292f] border border-slate-200 dark:border-slate-700/80 rounded-xl text-slate-800 dark:text-white focus:outline-none shadow-xs cursor-pointer"
             />
+          </div>
+        </div>
+
+        {/* Task Recurrence / Repeat */}
+        <div className="pt-0.5">
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+            <RotateCw className="w-3 h-3 text-blue-500 dark:text-blue-400" /> Repeat (Recurrence)
+          </label>
+          <RepeatDropdown
+            value={selectedTask.recurrence_rule}
+            onChange={(rule) => updateTask(selectedTask.id, { recurrence_rule: rule })}
+            dueDate={selectedTask.due_date}
+            buttonClassName="w-full justify-between"
+          />
+        </div>
+
+        {/* Eisenhower Matrix Quadrant Selector */}
+        <div className="p-3 bg-slate-50 dark:bg-[#1a1b20] border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <LayoutGrid className="w-3.5 h-3.5 text-rose-500" /> Eisenhower Matrix
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border" style={{
+              backgroundColor: Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#f43f5e18'
+                : !Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#f59e0b18'
+                : Boolean(selectedTask.is_urgent) && !Boolean(selectedTask.is_important)
+                ? '#3b82f618'
+                : '#10b98118',
+              color: Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#f43f5e'
+                : !Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#d97706'
+                : Boolean(selectedTask.is_urgent) && !Boolean(selectedTask.is_important)
+                ? '#2563eb'
+                : '#059669',
+              borderColor: Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#f43f5e30'
+                : !Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? '#f59e0b30'
+                : Boolean(selectedTask.is_urgent) && !Boolean(selectedTask.is_important)
+                ? '#3b82f630'
+                : '#10b98130',
+            }}>
+              {Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? 'Q1: Urgent & Important'
+                : !Boolean(selectedTask.is_urgent) && Boolean(selectedTask.is_important)
+                ? 'Q2: Not Urgent & Important'
+                : Boolean(selectedTask.is_urgent) && !Boolean(selectedTask.is_important)
+                ? 'Q3: Urgent & Unimportant'
+                : 'Q4: Not Urgent & Unimportant'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#23242a] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <input
+                type="checkbox"
+                checked={Boolean(selectedTask.is_urgent)}
+                onChange={(e) => updateTask(selectedTask.id, { is_urgent: e.target.checked })}
+                className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+              />
+              <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Urgent</span>
+            </label>
+
+            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#23242a] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <input
+                type="checkbox"
+                checked={Boolean(selectedTask.is_important)}
+                onChange={(e) => updateTask(selectedTask.id, { is_important: e.target.checked })}
+                className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+              />
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Important</span>
+            </label>
           </div>
         </div>
 

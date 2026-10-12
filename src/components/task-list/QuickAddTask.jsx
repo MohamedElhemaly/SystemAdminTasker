@@ -4,6 +4,8 @@ import { Plus, Tag, Users, User, ArrowRight, Check, Flag, FileType, AlertTriangl
 import { addDays } from 'date-fns';
 import toast from 'react-hot-toast';
 import { ModernDropdown } from '../common/ModernDropdown';
+import { RepeatDropdown } from '../common/RepeatDropdown';
+import { AssignMembersDropdown } from '../common/AssignMembersDropdown';
 import { getAvatarUrl } from '../../lib/avatars';
 
 export const QuickAddTask = () => {
@@ -22,9 +24,11 @@ export const QuickAddTask = () => {
   const [statusId, setStatusId] = useState(dropdownStatuses[0]?.id || 'st-1');
   const [taskTypeId, setTaskTypeId] = useState(dropdownTaskTypes[0]?.id || 'tt-1');
   const [dueDate, setDueDate] = useState(new Date().toISOString());
+  const [recurrenceRule, setRecurrenceRule] = useState(null);
   const [targetListId, setTargetListId] = useState(selectedListId);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
-  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [isImportant, setIsImportant] = useState(false);
 
   // Sync initial state when Supabase loads the real UUIDs from the database
   React.useEffect(() => {
@@ -38,60 +42,57 @@ export const QuickAddTask = () => {
   }, [selectedListId]);
 
   const currentList = lists.find(l => l.id === selectedListId) || lists[0];
-  const allAvailableMembers = allUsers || [];
-
-  const handleTaskTypeChange = (newTypeId) => {
-    setTaskTypeId(newTypeId);
-    const selectedObj = dropdownTaskTypes.find(t => t.id === newTypeId);
-    const isTeam = selectedObj?.name?.toLowerCase().includes('team');
-    if (isTeam && selectedUserIds.length === 0) {
-      setShowMemberPicker(true);
-    }
-  };
-
-  const toggleUserTag = (uid) => {
-    let next;
-    if (selectedUserIds.includes(uid)) {
-      next = selectedUserIds.filter(id => id !== uid);
-    } else {
-      next = [...selectedUserIds, uid];
-    }
-    setSelectedUserIds(next);
-  };
 
   const selectedTypeObj = dropdownTaskTypes.find(t => t.id === taskTypeId);
   const isTeamType = selectedTypeObj?.name?.toLowerCase().includes('team');
-  const isTeamTask = isTeamType || selectedUserIds.length > 0;
+  const taskTypeName = isTeamType ? 'Team' : 'Personal';
+
+  const handleTaskTypeChange = (newTypeId) => {
+    setTaskTypeId(newTypeId);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    // Strict Enforcement: A Team Task MUST have at least one team member selected
+    // Strict Enforcement: A Team Task MUST have at least one member selected for acknowledgement
     if (isTeamType && selectedUserIds.length === 0) {
-      toast.error('Team Task Error: You must select at least one team member before creating!', { 
+      toast.error('Team Task Error: You must select at least one member for acknowledgement!', { 
         id: 'team-task-req-member',
         duration: 4500 
       });
-      setShowMemberPicker(true);
       return;
     }
 
-    const created = await addTask({
+    const hasMultipleUsers = selectedUserIds.length > 1;
+    const finalTaskType = isTeamType || hasMultipleUsers ? 'team' : 'personal';
+
+    const taskPayload = {
       title: title.trim(),
       priority_id: priorityId,
       status_id: statusId,
       task_type_id: taskTypeId,
       due_date: dueDate,
-      task_type: isTeamTask ? 'team' : 'personal',
+      recurrence_rule: recurrenceRule,
+      task_type: finalTaskType,
       list_id: targetListId,
-      tagged_user_ids: selectedUserIds
-    });
+      // Always save all selected users to assigned_users array:
+      assigned_users: selectedUserIds,
+      assigned_to: selectedUserIds.length > 0 ? selectedUserIds[0] : null,
+      // Always create acknowledgements for all assigned users:
+      tagged_user_ids: selectedUserIds,
+      is_urgent: isUrgent,
+      is_important: isImportant
+    };
+
+    const created = await addTask(taskPayload);
 
     if (created) {
       setTitle('');
+      setRecurrenceRule(null);
       setSelectedUserIds([]);
-      setShowMemberPicker(false);
+      setIsUrgent(false);
+      setIsImportant(false);
     }
   };
 
@@ -178,85 +179,48 @@ export const QuickAddTask = () => {
             prefix="Due: "
           />
 
-          {/* Tagged Members Trigger Button (Enforced for Team Tasks) */}
-          <div className="relative">
+          {/* Repeat / Recurrence Selector */}
+          <RepeatDropdown
+            value={recurrenceRule}
+            onChange={setRecurrenceRule}
+            dueDate={dueDate}
+          />
+
+          {/* Dynamic Multi-Select Assignees / Acknowledgement Dropdown */}
+          <AssignMembersDropdown
+            taskType={taskTypeName}
+            selectedUserIds={selectedUserIds}
+            onChange={setSelectedUserIds}
+            allUsers={allUsers}
+          />
+
+          {/* Eisenhower Matrix Urgent & Important Quick Toggles */}
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
-              onClick={() => setShowMemberPicker(!showMemberPicker)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-xs ${
-                isTeamType && selectedUserIds.length === 0
-                  ? 'bg-red-50 text-red-700 border-red-300 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/50 font-bold animate-pulse'
-                  : selectedUserIds.length > 0
-                    ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40'
-                    : 'bg-white hover:bg-slate-50 dark:bg-[#1f2026] dark:hover:bg-[#25262e] border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300'
+              onClick={() => setIsUrgent(prev => !prev)}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                isUrgent
+                  ? 'bg-rose-50 text-rose-600 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40 shadow-xs'
+                  : 'text-slate-500 border-slate-200 hover:border-slate-300 dark:text-slate-400 dark:border-slate-700/60'
               }`}
+              title="Mark as Urgent for Eisenhower Matrix"
             >
-              <Users className="w-3.5 h-3.5 shrink-0" />
-              <span>
-                {isTeamType && selectedUserIds.length === 0
-                  ? '⚠️ Select Members (Required)'
-                  : selectedUserIds.length > 0
-                    ? `${selectedUserIds.length} Member${selectedUserIds.length > 1 ? 's' : ''} Assigned`
-                    : 'Assign Members'}
-              </span>
+              ! Urgent
             </button>
 
-            {/* Member Multi-select Dropdown Popover */}
-            {showMemberPicker && (
-              <div className="absolute left-0 mt-2 w-72 p-2 rounded-2xl bg-white/95 dark:bg-[#1c1d22]/95 backdrop-blur-md border border-slate-200 dark:border-slate-700/80 shadow-2xl z-50 space-y-2 animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-2 pt-1 pb-1 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
-                    Assign Team Members
-                  </span>
-                  <button 
-                    type="button"
-                    onClick={() => setShowMemberPicker(false)}
-                    className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
-                  >
-                    Done
-                  </button>
-                </div>
-                {isTeamType && selectedUserIds.length === 0 && (
-                  <p className="px-2 text-[10px] text-red-600 dark:text-red-400 font-bold flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 shrink-0" />
-                    At least 1 member is required for Team tasks!
-                  </p>
-                )}
-
-                <div className="max-h-52 overflow-y-auto space-y-1 custom-scrollbar p-1">
-                  {allAvailableMembers.map((m) => {
-                    const uid = m.user_id || m.id;
-                    const isSelected = selectedUserIds.includes(uid);
-                    const avatarUrl = getAvatarUrl(m.avatar_id, m.full_name || m.email);
-                    return (
-                      <button
-                        key={uid}
-                        type="button"
-                        onClick={() => toggleUserTag(uid)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
-                          isSelected 
-                            ? 'bg-purple-100/80 text-purple-900 dark:bg-purple-500/25 dark:text-purple-200 font-semibold' 
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#272832]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <img
-                            src={avatarUrl}
-                            alt=""
-                            className="w-5 h-5 rounded-full object-cover shrink-0 ring-1 ring-black/10 dark:ring-white/10"
-                          />
-                          <div className="truncate text-left">
-                            <span className="truncate block leading-tight font-medium">{m.full_name || 'Member'}</span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate">{m.email}</span>
-                          </div>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0 ml-1" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setIsImportant(prev => !prev)}
+              className={`px-2 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                isImportant
+                  ? 'bg-amber-50 text-amber-600 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40 shadow-xs'
+                  : 'text-slate-500 border-slate-200 hover:border-slate-300 dark:text-slate-400 dark:border-slate-700/60'
+              }`}
+              title="Mark as Important for Eisenhower Matrix"
+            >
+              ★ Important
+            </button>
           </div>
 
         </div>

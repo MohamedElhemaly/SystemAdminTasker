@@ -9,6 +9,8 @@ import { Sidebar } from './components/sidebar/Sidebar';
 import { TaskListPanel } from './components/task-list/TaskListPanel';
 import { TaskDetailPanel } from './components/task-detail/TaskDetailPanel';
 import { TaskDelegationMap } from './components/delegation-map/TaskDelegationMap';
+import { CalendarView } from './components/calendar/CalendarView';
+import { EisenhowerMatrix } from './components/matrix/EisenhowerMatrix';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { ProfileSettingsModal } from './components/profile/ProfileSettingsModal';
 import { CreateListModal } from './components/sidebar/CreateListModal';
@@ -96,6 +98,13 @@ const DashboardLayout = () => {
           />
           <TaskDetailPanel />
         </>
+      ) : activeView === 'matrix' ? (
+        <>
+          <EisenhowerMatrix />
+          <TaskDetailPanel />
+        </>
+      ) : activeView === 'calendar' ? (
+        <CalendarView />
       ) : activeView === 'map' ? (
         <TaskDelegationMap />
       ) : (
@@ -124,17 +133,16 @@ const DashboardLayout = () => {
   );
 };
 
-// ─────────────────────────────────────────────────
-// App Router
-// ─────────────────────────────────────────────────
+import { NotificationProvider } from './context/NotificationContext';
+
 export default function App() {
   return (
     <BrowserRouter>
       <ClickFeedbackProvider>
         <AuthProvider>
           <TaskProvider>
-            
-            <Routes>
+            <NotificationProvider>
+              <Routes>
               {/* Public Routes: Auth Pages */}
               <Route 
                 path="/login" 
@@ -238,6 +246,7 @@ export default function App() {
               )}
             </Toaster>
 
+            </NotificationProvider>
           </TaskProvider>
         </AuthProvider>
       </ClickFeedbackProvider>

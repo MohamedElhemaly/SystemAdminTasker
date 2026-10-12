@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     list_id UUID REFERENCES public.lists(id) ON DELETE CASCADE NULL,
     created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    recurrence_rule TEXT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { QuickAddTask } from './QuickAddTask';
 import { TaskItem } from './TaskItem';
 import { parseSearchQuery } from '../../lib/searchParser';
 import { DateRangeFilter } from './DateRangeFilter';
 import { SearchAutocomplete } from './SearchAutocomplete';
+import { ViewOptionsMenu } from './ViewOptionsMenu';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Search, 
-  Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, CalendarRange, X
+  Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, CalendarRange, X,
+  Layers, Flag
 } from 'lucide-react';
 import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 
 export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
-  const { tasks, lists, selectedListId, refreshTasks, loading, allUsers, dropdownTags } = useTasks();
+  const { 
+    tasks, 
+    lists, 
+    selectedListId, 
+    refreshTasks, 
+    loading, 
+    allUsers, 
+    dropdownTags,
+    dropdownPriorities,
+    groupBy,
+    sortBy,
+    order
+  } = useTasks();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCompleted, setShowCompleted] = useState(true);
   const [startDate, setStartDate] = useState('');
@@ -108,44 +122,218 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
   const uncompletedTasks = filteredByDate.filter(t => !t.is_completed);
   const completedTasks = filteredByDate.filter(t => t.is_completed);
 
-  // Group uncompleted tasks by Smart Dates safely
-  const overdueTasks = uncompletedTasks.filter(t => {
-    if (!t?.due_date) return false;
-    try {
-      const d = parseISO(t.due_date);
-      return isPast(d) && !isToday(d);
-    } catch (e) {
-      return false;
-    }
-  });
+  // Sort tasks by sortBy ('date' | 'priority' | 'title' | 'created_at') and order ('asc' | 'desc')
+  const sortedUncompletedTasks = useMemo(() => {
+    const list = [...uncompletedTasks];
 
-  const todayTasks = uncompletedTasks.filter(t => {
-    if (!t?.due_date) return false;
-    try {
-      return isToday(parseISO(t.due_date));
-    } catch (e) {
-      return false;
-    }
-  });
+    // Priority level resolver
+    const getPriorityLevel = (pIdOrName) => {
+      if (!pIdOrName) return -1;
+      const found = dropdownPriorities.find(p => p.id === pIdOrName || p.name?.toLowerCase() === String(pIdOrName).toLowerCase());
+      return found ? (found.level_order ?? 0) : -1;
+    };
 
-  const tomorrowTasks = uncompletedTasks.filter(t => {
-    if (!t?.due_date) return false;
-    try {
-      return isTomorrow(parseISO(t.due_date));
-    } catch (e) {
-      return false;
-    }
-  });
+    return list.sort((a, b) => {
+      let comparison = 0;
 
-  const laterTasks = uncompletedTasks.filter(t => {
-    if (!t?.due_date) return true;
-    try {
-      const date = parseISO(t.due_date);
-      return !isPast(date) && !isToday(date) && !isTomorrow(date);
-    } catch (e) {
-      return true;
+      if (sortBy === 'title') {
+        const titleA = (a.title || '').toLowerCase();
+        const titleB = (b.title || '').toLowerCase();
+        comparison = titleA.localeCompare(titleB);
+      } else if (sortBy === 'priority') {
+        const prioA = getPriorityLevel(a.priority || a.priority_id);
+        const prioB = getPriorityLevel(b.priority || b.priority_id);
+        comparison = prioB - prioA;
+      } else if (sortBy === 'created_at') {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        comparison = dateA - dateB;
+      } else {
+        // Default: 'date' (due_date)
+        if (!a.due_date && !b.due_date) comparison = 0;
+        else if (!a.due_date) comparison = 1;
+        else if (!b.due_date) comparison = -1;
+        else {
+          comparison = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        }
+      }
+
+      return order === 'desc' ? -comparison : comparison;
+    });
+  }, [uncompletedTasks, sortBy, order, dropdownPriorities]);
+
+  // Group sorted uncompleted tasks according to groupBy ('date' | 'priority' | 'list' | 'none')
+  const taskGroups = useMemo(() => {
+    if (groupBy === 'none') {
+      return [
+        {
+          id: 'all',
+          title: 'All Tasks',
+          icon: Layers,
+          colorClass: 'text-slate-500 dark:text-slate-400',
+          tasks: sortedUncompletedTasks
+        }
+      ];
     }
-  });
+
+    if (groupBy === 'priority') {
+      const groups = [];
+      const priorityBuckets = {};
+
+      dropdownPriorities.forEach(p => {
+        priorityBuckets[p.id] = {
+          id: `prio-${p.id}`,
+          title: p.name,
+          icon: Flag,
+          colorHex: p.color_hex,
+          tasks: []
+        };
+      });
+
+      const noPriorityTasks = [];
+
+      sortedUncompletedTasks.forEach(task => {
+        const pMatch = dropdownPriorities.find(p => p.id === task.priority || p.id === task.priority_id || p.name?.toLowerCase() === String(task.priority || '').toLowerCase());
+        if (pMatch && priorityBuckets[pMatch.id]) {
+          priorityBuckets[pMatch.id].tasks.push(task);
+        } else {
+          noPriorityTasks.push(task);
+        }
+      });
+
+      dropdownPriorities.forEach(p => {
+        if (priorityBuckets[p.id].tasks.length > 0) {
+          groups.push(priorityBuckets[p.id]);
+        }
+      });
+
+      if (noPriorityTasks.length > 0) {
+        groups.push({
+          id: 'prio-none',
+          title: 'No Priority',
+          icon: Flag,
+          colorClass: 'text-slate-400',
+          tasks: noPriorityTasks
+        });
+      }
+
+      return groups;
+    }
+
+    if (groupBy === 'list') {
+      const groups = [];
+      const listBuckets = {};
+
+      lists.forEach(l => {
+        listBuckets[l.id] = {
+          id: `list-${l.id}`,
+          title: l.name,
+          icon: Folder,
+          colorHex: l.color,
+          tasks: []
+        };
+      });
+
+      const unlisted = [];
+      sortedUncompletedTasks.forEach(task => {
+        if (task.list_id && listBuckets[task.list_id]) {
+          listBuckets[task.list_id].tasks.push(task);
+        } else {
+          unlisted.push(task);
+        }
+      });
+
+      lists.forEach(l => {
+        if (listBuckets[l.id].tasks.length > 0) {
+          groups.push(listBuckets[l.id]);
+        }
+      });
+
+      if (unlisted.length > 0) {
+        groups.push({
+          id: 'list-unassigned',
+          title: 'Inbox / Other',
+          icon: Inbox,
+          colorClass: 'text-slate-400',
+          tasks: unlisted
+        });
+      }
+
+      return groups;
+    }
+
+    // Default: groupBy === 'date'
+    const overdue = [];
+    const today = [];
+    const tomorrow = [];
+    const upcoming = [];
+    const noDate = [];
+
+    sortedUncompletedTasks.forEach(t => {
+      if (!t.due_date) {
+        noDate.push(t);
+        return;
+      }
+      try {
+        const d = parseISO(t.due_date);
+        if (isToday(d)) today.push(t);
+        else if (isPast(d)) overdue.push(t);
+        else if (isTomorrow(d)) tomorrow.push(t);
+        else upcoming.push(t);
+      } catch {
+        noDate.push(t);
+      }
+    });
+
+    const dateGroups = [];
+    if (overdue.length > 0) {
+      dateGroups.push({
+        id: 'date-overdue',
+        title: 'Overdue',
+        icon: AlertCircle,
+        colorClass: 'text-red-600 dark:text-red-400',
+        tasks: overdue
+      });
+    }
+    if (today.length > 0) {
+      dateGroups.push({
+        id: 'date-today',
+        title: 'Today',
+        icon: Calendar,
+        colorClass: 'text-emerald-700 dark:text-emerald-400',
+        tasks: today
+      });
+    }
+    if (tomorrow.length > 0) {
+      dateGroups.push({
+        id: 'date-tomorrow',
+        title: 'Tomorrow',
+        icon: CalendarDays,
+        colorClass: 'text-amber-700 dark:text-amber-400',
+        tasks: tomorrow
+      });
+    }
+    if (upcoming.length > 0) {
+      dateGroups.push({
+        id: 'date-upcoming',
+        title: 'Upcoming',
+        icon: Inbox,
+        colorClass: 'text-blue-600 dark:text-blue-400',
+        tasks: upcoming
+      });
+    }
+    if (noDate.length > 0) {
+      dateGroups.push({
+        id: 'date-nodate',
+        title: 'No Due Date',
+        icon: Calendar,
+        colorClass: 'text-slate-500 dark:text-slate-400',
+        tasks: noDate
+      });
+    }
+
+    return dateGroups;
+  }, [groupBy, sortedUncompletedTasks, dropdownPriorities, lists]);
 
   return (
     <div className="flex-1 h-screen bg-slate-50/60 dark:bg-[#18181c] text-slate-900 dark:text-slate-100 flex flex-col min-w-0 border-r border-slate-200 dark:border-slate-800">
@@ -206,6 +394,9 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
             activeMatchesCount={startDate || endDate ? filteredByDate.length : null}
           />
 
+          {/* View Options (Group by, Sort by, Order) */}
+          <ViewOptionsMenu />
+
           {/* Quick Create Buttons */}
           <button
             onClick={onOpenCreateList}
@@ -253,57 +444,20 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
         {/* Quick Add Bar */}
         <QuickAddTask />
 
-        {/* Overdue Section */}
-        {overdueTasks.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span>Overdue ({overdueTasks.length})</span>
+        {/* Dynamic Task Groups */}
+        {taskGroups.map(group => group.tasks.length > 0 && (
+          <div key={group.id} className="space-y-1.5">
+            <div className={`flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider ${group.colorClass || ''}`}>
+              {group.icon && <group.icon className="w-3.5 h-3.5" style={group.colorHex ? { color: group.colorHex } : undefined} />}
+              <span style={group.colorHex ? { color: group.colorHex } : undefined}>
+                {group.title} ({group.tasks.length})
+              </span>
             </div>
-            {overdueTasks.map(task => (
+            {group.tasks.map(task => (
               <TaskItem key={task.id} task={task} />
             ))}
           </div>
-        )}
-
-        {/* Today Section */}
-        {todayTasks.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Today ({todayTasks.length})</span>
-            </div>
-            {todayTasks.map(task => (
-              <TaskItem key={task.id} task={task} />
-            ))}
-          </div>
-        )}
-
-        {/* Tomorrow Section */}
-        {tomorrowTasks.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
-              <CalendarDays className="w-3.5 h-3.5" />
-              <span>Tomorrow ({tomorrowTasks.length})</span>
-            </div>
-            {tomorrowTasks.map(task => (
-              <TaskItem key={task.id} task={task} />
-            ))}
-          </div>
-        )}
-
-        {/* Later / No Date Section */}
-        {laterTasks.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <Inbox className="w-3.5 h-3.5" />
-              <span>General Tasks ({laterTasks.length})</span>
-            </div>
-            {laterTasks.map(task => (
-              <TaskItem key={task.id} task={task} />
-            ))}
-          </div>
-        )}
+        ))}
 
         {/* Empty State */}
         {uncompletedTasks.length === 0 && (

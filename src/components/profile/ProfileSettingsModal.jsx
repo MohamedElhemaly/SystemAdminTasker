@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { BUILTIN_AVATARS } from '../../lib/avatars';
-import { User, X, Check, Shield, Mail, ExternalLink } from 'lucide-react';
+import { User, X, Check, Shield, Mail, ExternalLink, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { GoogleSyncModal } from '../calendar/GoogleSyncModal';
 import toast from 'react-hot-toast';
 
 export const ProfileSettingsModal = ({ isOpen, onClose }) => {
@@ -12,6 +13,7 @@ export const ProfileSettingsModal = ({ isOpen, onClose }) => {
   const [fullName, setFullName] = useState('');
   const [selectedAvatarId, setSelectedAvatarId] = useState('avatar-1');
   const [saving, setSaving] = useState(false);
+  const [isGoogleSyncOpen, setIsGoogleSyncOpen] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -148,24 +150,40 @@ export const ProfileSettingsModal = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+              onClick={() => setIsGoogleSyncOpen(true)}
+              className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              Cancel
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Google Sync</span>
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium shadow-xs disabled:opacity-50 cursor-pointer"
-            >
-              {saving ? 'Saving...' : 'Save Profile'}
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {saving ? 'Saving...' : 'Save Profile'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      <GoogleSyncModal 
+        isOpen={isGoogleSyncOpen} 
+        onClose={() => setIsGoogleSyncOpen(false)} 
+      />
     </div>
   );
 };

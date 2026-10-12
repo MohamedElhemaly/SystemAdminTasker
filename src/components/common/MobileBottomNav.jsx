@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
-import { Inbox, Calendar, GitFork, ShieldAlert, User } from 'lucide-react';
+import { Inbox, Calendar, GitFork, ShieldAlert, User, LayoutGrid } from 'lucide-react';
 
 export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) => {
   const { setSelectedListId, selectedListId } = useTasks();
@@ -22,13 +22,23 @@ export const MobileBottomNav = ({ activeView, setActiveView, onOpenProfile }) =>
       </button>
 
       <button
-        onClick={() => { setSelectedListId('list-today'); setActiveView('tasks'); }}
+        onClick={() => setActiveView('matrix')}
         className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
-          selectedListId === 'list-today' && activeView === 'tasks' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500 dark:text-slate-400'
+          activeView === 'matrix' ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-400'
+        }`}
+      >
+        <LayoutGrid className="w-5 h-5" />
+        <span>Matrix</span>
+      </button>
+
+      <button
+        onClick={() => setActiveView('calendar')}
+        className={`flex flex-col items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${
+          activeView === 'calendar' ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-500 dark:text-slate-400'
         }`}
       >
         <Calendar className="w-5 h-5" />
-        <span>Today</span>
+        <span>Calendar</span>
       </button>
 
       <button

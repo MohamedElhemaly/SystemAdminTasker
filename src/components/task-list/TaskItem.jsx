@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
-import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check, Lock } from 'lucide-react';
+import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check, Lock, RotateCw, BellRing } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
 import { getAvatarUrl } from '../../lib/avatars';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 export const TaskItem = ({ task }) => {
   const { 
@@ -17,14 +19,20 @@ export const TaskItem = ({ task }) => {
     dropdownTaskTypes,
     allUsers
   } = useTasks();
-  const { user } = useAuth();
+  const { user, profile, isDemoMode } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(task.title);
 
   const isSelected = selectedTaskId === task.id;
   const currentUserId = user?.id || 'demo-user-123';
+  const currentUserRole = profile?.role || 'member';
 
-  const assignedUser = allUsers?.find(u => u.id === task.assigned_to);
+  const assignedUserIds = Array.isArray(task.assigned_users) && task.assigned_users.length > 0
+    ? task.assigned_users
+    : (task.assigned_to ? [task.assigned_to] : []);
+  
+  const assignedUsers = assignedUserIds.map(uid => allUsers?.find(u => u.id === uid)).filter(Boolean);
+  const assignedUser = assignedUsers[0];
   const assigneeAvatarUrl = assignedUser ? getAvatarUrl(assignedUser.avatar_id, assignedUser.full_name || assignedUser.email) : getAvatarUrl('avatar-1', 'Unknown');
 
   // Dynamic Lookup References
@@ -65,9 +73,58 @@ export const TaskItem = ({ task }) => {
   const finishedMembers = acks.filter(a => a.is_acknowledged);
   const workingMembers = acks.filter(a => !a.is_acknowledged);
   const totalAcks = acks.length;
-  const isTeam = task.task_type === 'team' || totalAcks > 0;
-  const isLocked = isTeam && workingMembers.length > 0 && !task.is_completed;
+  const hasMultipleAssignees = Array.isArray(task.assigned_users) && task.assigned_users.length > 1;
+  const isTeam = task.task_type === 'team' || totalAcks > 0 || hasMultipleAssignees;
+  const isLocked = isTeam && (workingMembers.length > 0 || (totalAcks === 0 && hasMultipleAssignees)) && !task.is_completed;
   const myAck = acks.find(a => a.user_id === currentUserId);
+
+  // Nudge Action: Creator or Admin/Manager only, if pending acknowledgements exist
+  const isAdminOrCreator = task.created_by === currentUserId || currentUserRole === 'admin' || currentUserRole === 'manager';
+  const canNudge = isTeam && isAdminOrCreator && workingMembers.length > 0;
+
+  const handleNudge = async (e) => {
+    e.stopPropagation();
+    if (workingMembers.length === 0) return;
+
+    try {
+      const actorName = profile?.full_name || user?.email?.split('@')[0] || 'Manager';
+      const notifs = workingMembers.map(m => ({
+        user_id: m.user_id,
+        actor_id: currentUserId,
+        type: 'nudge_ack',
+        entity_id: task.id,
+        message_data: {
+          task_id: task.id,
+          task_title: task.title,
+          actor_name: actorName,
+          custom_text: `${actorName} nudged you to finish your part on "${task.title}".`
+        },
+        is_read: false
+      }));
+
+      if (isSupabaseConfigured() && !isDemoMode) {
+        const { error } = await supabase.from('notifications').insert(notifs);
+        if (error) throw error;
+      } else {
+        const stored = localStorage.getItem('tasker_live_notifications');
+        const existing = stored ? JSON.parse(stored) : [];
+        const newItems = notifs.map(n => ({
+          id: 'notif-' + Math.random().toString(36).substr(2, 9),
+          ...n,
+          created_at: new Date().toISOString(),
+          actor_avatar: profile?.avatar_id || 'avatar-1'
+        }));
+        localStorage.setItem('tasker_live_notifications', JSON.stringify([...newItems, ...existing]));
+      }
+
+      toast.success(`🔔 Nudge sent to ${workingMembers.length} member(s)!`, {
+        id: `nudge-${task.id}`,
+        duration: 3500
+      });
+    } catch (err) {
+      toast.error('Failed to send nudge: ' + err.message);
+    }
+  };
 
   return (
     <div
@@ -199,6 +256,9 @@ export const TaskItem = ({ task }) => {
             }`}>
               <Calendar className="w-3 h-3" />
               <span>{formattedDueDate}</span>
+              {task.recurrence_rule && (
+                <RotateCw className="w-2.5 h-2.5 text-blue-500 ml-0.5" title={`Recurring: ${task.recurrence_rule}`} />
+              )}
             </span>
           )}
 
@@ -212,18 +272,30 @@ export const TaskItem = ({ task }) => {
             </span>
           )}
 
-          {/* Assignee Avatar */}
-          <div 
-            className={`${isTeam ? '' : 'ml-auto'} flex items-center gap-1.5`} 
-            title={`Assigned to: ${assignedUser?.full_name || assignedUser?.email || 'Unknown'}`}
-          >
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Assigned:</span>
-            <img 
-              src={assigneeAvatarUrl} 
-              alt="Assignee" 
-              className="w-5 h-5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 object-cover shrink-0"
-            />
-          </div>
+          {/* Assignee Avatar / Avatars Stack */}
+          {assignedUsers.length > 0 && (
+            <div 
+              className={`${isTeam ? '' : 'ml-auto'} flex items-center gap-1.5`} 
+              title={`Assigned to: ${assignedUsers.map(u => u.full_name || u.email).join(', ')}`}
+            >
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Assigned:</span>
+              <div className="flex items-center -space-x-1.5 overflow-hidden">
+                {assignedUsers.slice(0, 3).map((u, idx) => (
+                  <img 
+                    key={u.id || idx}
+                    src={getAvatarUrl(u.avatar_id, u.full_name || u.email)} 
+                    alt={u.full_name} 
+                    className="w-5 h-5 rounded-full border border-white dark:border-[#1f2026] bg-slate-100 dark:bg-slate-800 object-cover shrink-0 ring-1 ring-black/5"
+                  />
+                ))}
+                {assignedUsers.length > 3 && (
+                  <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-700 dark:text-slate-200 flex items-center justify-center border border-white dark:border-[#1f2026]">
+                    +{assignedUsers.length - 3}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* CUSTOM FEATURE: Team Status & Member Breakdown (Finished vs Still Working) */}
           {isTeam && (
@@ -242,11 +314,24 @@ export const TaskItem = ({ task }) => {
                 </span>
               </span>
 
-              {/* Direct Quick Action: If logged-in user is assigned and still working */}
-              {myAck && !myAck.is_acknowledged && (
+              {/* Remind / Nudge Button (Creator or Manager only, when members still working) */}
+              {canNudge && (
                 <button
                   type="button"
-                  onClick={() => toggleAcknowledgement(task.id, myAck.id, currentUserId)}
+                  onClick={handleNudge}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/40 shadow-xs transition-all cursor-pointer active:scale-95"
+                  title={`Send Nudge reminder to ${workingMembers.length} member(s) still working`}
+                >
+                  <BellRing className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                  <span>Nudge ({workingMembers.length})</span>
+                </button>
+              )}
+
+              {/* Direct Quick Action: If logged-in user is assigned and still working */}
+              {((myAck && !myAck.is_acknowledged) || (!myAck && task.assigned_users?.includes(currentUserId))) && (
+                <button
+                  type="button"
+                  onClick={() => toggleAcknowledgement(task.id, myAck?.id, currentUserId)}
                   className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all cursor-pointer animate-pulse"
                   title="Click to mark your work finished"
                 >

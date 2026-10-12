@@ -6,9 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Shield, Check, Mail, ArrowLeft, Save, 
   Lock, Fingerprint, LogOut, Clock, Trash2,
-  CheckCircle2
+  CheckCircle2, Calendar, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { GoogleSyncModal } from '../calendar/GoogleSyncModal';
 
 /**
  * ProfileSettingsPage — /settings/profile
@@ -29,6 +30,7 @@ export const ProfileSettingsPage = () => {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isGoogleSyncOpen, setIsGoogleSyncOpen] = useState(false);
 
   // Pre-fill with current profile data
   useEffect(() => {
@@ -324,6 +326,32 @@ export const ProfileSettingsPage = () => {
           </form>
         </div>
 
+        {/* Google Calendar 2-Way Sync Integration */}
+        <div className="p-5 rounded-2xl bg-white dark:bg-[#1f1f23] border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-500 flex items-center justify-center">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Google Calendar 2-Way Sync</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Sync your tasks directly with Google Calendar in real time.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsGoogleSyncOpen(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Sync with Google Calendar</span>
+            </button>
+          </div>
+        </div>
+
         {/* Security Info */}
         <div className="p-4 rounded-2xl bg-white dark:bg-[#1f1f23] border border-slate-200 dark:border-slate-800 flex items-start gap-3 shadow-xs">
           <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 shrink-0 mt-0.5">
@@ -371,6 +399,11 @@ export const ProfileSettingsPage = () => {
           </div>
         </div>
       </div>
+
+      <GoogleSyncModal 
+        isOpen={isGoogleSyncOpen} 
+        onClose={() => setIsGoogleSyncOpen(false)} 
+      />
     </div>
   );
 };

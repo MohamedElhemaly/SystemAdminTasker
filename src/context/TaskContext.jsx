@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isToday, isTomorrow, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
+import { supabase, isSupabaseConfigured, createIsolatedClient } from '../lib/supabase';
+import { isToday, isTomorrow, isWithinInterval, addDays, startOfDay, endOfDay, parseISO, format } from 'date-fns';
+import { getNextOccurrence } from '../lib/rruleHelper';
 import toast from 'react-hot-toast';
 
 const TaskContext = createContext({});
@@ -54,17 +55,53 @@ const DEFAULT_USERS = [
   { id: 'usr-6', email: 'david.b@ticktick-team.com', full_name: 'David Beckham', avatar_id: 'avatar-15', role: 'member' }
 ];
 
+// Helper: purge any legacy sample/mockup tasks from localStorage caches
+const purgeMockTasksFromStorage = () => {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('tasker_store_')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          const parsed = JSON.parse(item);
+          if (Array.isArray(parsed.tasks)) {
+            const cleaned = parsed.tasks.filter(t => !t.id?.startsWith('sample-task-'));
+            if (cleaned.length !== parsed.tasks.length) {
+              localStorage.setItem(key, JSON.stringify({ ...parsed, tasks: cleaned }));
+            }
+          }
+        }
+      }
+    }
+  } catch { }
+};
+purgeMockTasksFromStorage();
+
+const getDefaultDemoTasks = () => [];
+
 // Helper: generate a unique localStorage key per user
 const getStoreKey = (userId) => `tasker_store_${userId || 'anonymous'}`;
 
+// Helper: persistently track deleted user IDs / emails so default users stay deleted
+const getDeletedUserIds = () => {
+  try {
+    return JSON.parse(localStorage.getItem('tasker_deleted_user_ids') || '[]');
+  } catch {
+    return [];
+  }
+};
+
 export const TaskProvider = ({ children }) => {
   const { user, profile, isDemoMode, registerLogoutHandler, isAuthenticated } = useAuth();
-  
+
   const [tasks, setTasks] = useState([]);
   const [lists, setLists] = useState(SYSTEM_SMART_LISTS);
   const [teams, setTeams] = useState([]);
-  const [allUsers, setAllUsers] = useState(DEFAULT_USERS);
-  
+  const [allUsers, setAllUsers] = useState(() => {
+    const deleted = getDeletedUserIds();
+    return DEFAULT_USERS.filter(u => !deleted.includes(u.id) && !deleted.includes(u.email?.toLowerCase()));
+  });
+
   // Dynamic Dropdowns Global State
   const [dropdownPriorities, setDropdownPriorities] = useState(DEFAULT_PRIORITIES);
   const [dropdownStatuses, setDropdownStatuses] = useState(DEFAULT_STATUSES);
@@ -74,6 +111,41 @@ export const TaskProvider = ({ children }) => {
   const [selectedListId, setSelectedListId] = useState('list-inbox');
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // View Options Preferences (Group by, Sort by, Order)
+  const [groupBy, setGroupBy] = useState(() => {
+    try {
+      return localStorage.getItem('tasker_view_groupBy') || 'date';
+    } catch {
+      return 'date';
+    }
+  });
+
+  const [sortBy, setSortBy] = useState(() => {
+    try {
+      return localStorage.getItem('tasker_view_sortBy') || 'date';
+    } catch {
+      return 'date';
+    }
+  });
+
+  const [order, setOrder] = useState(() => {
+    try {
+      return localStorage.getItem('tasker_view_order') || 'asc';
+    } catch {
+      return 'asc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tasker_view_groupBy', groupBy);
+      localStorage.setItem('tasker_view_sortBy', sortBy);
+      localStorage.setItem('tasker_view_order', order);
+    } catch (e) {
+      // ignore
+    }
+  }, [groupBy, sortBy, order]);
 
   // Gate: prevent auto-persist from overwriting localStorage before initial load completes
   const hasLoadedRef = useRef(false);
@@ -135,18 +207,26 @@ export const TaskProvider = ({ children }) => {
           const cached = localStorage.getItem(storeKey);
           if (cached) {
             const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed.tasks)) setTasks(parsed.tasks);
+            if (Array.isArray(parsed.tasks)) {
+              const realTasks = parsed.tasks.filter(t => !t.id?.startsWith('sample-task-'));
+              setTasks(realTasks);
+            } else {
+              setTasks([]);
+            }
             if (Array.isArray(parsed.lists) && parsed.lists.length > 0) setLists(parsed.lists);
             if (Array.isArray(parsed.teams)) setTeams(parsed.teams);
+            const deleted = getDeletedUserIds();
             if (Array.isArray(parsed.allUsers) && parsed.allUsers.length > 0) {
-              setAllUsers(parsed.allUsers);
+              setAllUsers(parsed.allUsers.filter(u => !deleted.includes(u.id) && !deleted.includes(u.email?.toLowerCase())));
             } else {
-              setAllUsers(DEFAULT_USERS);
+              setAllUsers(DEFAULT_USERS.filter(u => !deleted.includes(u.id) && !deleted.includes(u.email?.toLowerCase())));
             }
             if (Array.isArray(parsed.dropdownPriorities) && parsed.dropdownPriorities.length > 0) setDropdownPriorities(parsed.dropdownPriorities);
             if (Array.isArray(parsed.dropdownStatuses) && parsed.dropdownStatuses.length > 0) setDropdownStatuses(parsed.dropdownStatuses);
             if (Array.isArray(parsed.dropdownTaskTypes) && parsed.dropdownTaskTypes.length > 0) setDropdownTaskTypes(parsed.dropdownTaskTypes);
             if (Array.isArray(parsed.dropdownTags) && parsed.dropdownTags.length > 0) setDropdownTags(parsed.dropdownTags);
+          } else {
+            setTasks([]);
           }
         } catch (e) {
           console.error('[TaskContext] Failed to parse localStorage cache:', e);
@@ -171,7 +251,7 @@ export const TaskProvider = ({ children }) => {
         realtimeChannelRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isDemoMode]);
 
   // ─────────────────────────────────────────────────
@@ -256,9 +336,9 @@ export const TaskProvider = ({ children }) => {
         { event: '*', schema: 'public', table: 'team_members' },
         (payload) => {
           // Check if the current user is the one being added or removed
-          const isTargetUser = 
-             (payload.eventType === 'INSERT' && payload.new.user_id === user?.id) ||
-             (payload.eventType === 'DELETE' && payload.old?.user_id === user?.id);
+          const isTargetUser =
+            (payload.eventType === 'INSERT' && payload.new.user_id === user?.id) ||
+            (payload.eventType === 'DELETE' && payload.old?.user_id === user?.id);
 
           if (isTargetUser) {
             if (payload.eventType === 'INSERT') {
@@ -294,15 +374,16 @@ export const TaskProvider = ({ children }) => {
       const { data: profilesData } = await supabase.from('profiles').select('*');
       const baseProfiles = (profilesData && profilesData.length > 0) ? profilesData : [];
       const combined = [...baseProfiles];
+      const deleted = getDeletedUserIds();
       DEFAULT_USERS.forEach(defU => {
-        if (!combined.some(u => 
-          u.id === defU.id || 
+        if (!deleted.includes(defU.id) && !deleted.includes(defU.email?.toLowerCase()) && !combined.some(u =>
+          u.id === defU.id ||
           (u.email && defU.email && u.email.toLowerCase() === defU.email.toLowerCase())
         )) {
           combined.push(defU);
         }
       });
-      setAllUsers(combined);
+      setAllUsers(combined.filter(u => !deleted.includes(u.id) && !deleted.includes(u.email?.toLowerCase())));
 
       // 2. Fetch Teams & Members
       const { data: teamsData } = await supabase.from('teams').select('*, team_members(*)');
@@ -342,6 +423,9 @@ export const TaskProvider = ({ children }) => {
       if (tasksData) {
         const formattedTasks = tasksData.map(t => ({
           ...t,
+          assigned_users: Array.isArray(t.assigned_users) && t.assigned_users.length > 0
+            ? t.assigned_users
+            : (t.assigned_to ? [t.assigned_to] : []),
           tags: (t.task_tag_mapping || []).map(m => m.dropdown_tags).filter(Boolean),
           task_acknowledgements: (t.task_acknowledgements || []).map(ack => ({
             ...ack,
@@ -349,6 +433,8 @@ export const TaskProvider = ({ children }) => {
           }))
         }));
         setTasks(formattedTasks);
+      } else {
+        setTasks([]);
       }
     } catch (err) {
       console.error('[TaskContext] Error fetching Supabase data:', err);
@@ -568,41 +654,53 @@ export const TaskProvider = ({ children }) => {
     const currentUserId = user?.id || 'demo-user';
     const currentUserRole = profile?.role || 'member';
 
-    let assignedTo = taskData.assigned_to || currentUserId;
+    let assignedUsers = Array.isArray(taskData.assigned_users)
+      ? taskData.assigned_users
+      : (taskData.assigned_to ? [taskData.assigned_to] : []);
+
+    let assignedTo = assignedUsers[0] || taskData.assigned_to || currentUserId;
     if (currentUserRole === 'member' && assignedTo !== currentUserId) {
       toast.error('Security Restriction: Members can only assign tasks to themselves.');
       assignedTo = currentUserId;
+      assignedUsers = [currentUserId];
     }
 
     const defaultList = lists.find(l => !l.is_smart);
-    
+
     let rawTargetId = taskData.list_id || selectedListId;
     let targetListId = rawTargetId;
-    
+
     // If the target is a smart list (e.g. 'list-inbox'), try to fall back to the first user-created list, otherwise use null
     if (rawTargetId.startsWith('list-') && lists.find(l => l.id === rawTargetId)?.is_smart) {
       targetListId = defaultList ? defaultList.id : null;
     }
-    
+
     // Final safety check: no string starting with 'list-' should be passed to Supabase UUID column
     if (targetListId && targetListId.startsWith('list-')) {
       targetListId = null;
     }
 
     const targetList = targetListId ? lists.find(l => l.id === targetListId) : null;
-    
+
     const isTeamTask = taskData.task_type === 'team' || Boolean(taskData.tagged_user_ids?.length);
-    
+
     // Strict Requirement: Team tasks MUST have at least one team member selected
     if (taskData.task_type === 'team' && (!taskData.tagged_user_ids || taskData.tagged_user_ids.length === 0)) {
       toast.error('Team Task Error: You must select at least one team member!');
       return null;
     }
 
+    // Collect all assigned / tagged users for mandatory acknowledgement
+    const allAssignedIds = Array.from(new Set([
+      ...(Array.isArray(taskData.assigned_users) ? taskData.assigned_users : []),
+      ...(Array.isArray(taskData.tagged_user_ids) ? taskData.tagged_user_ids : []),
+      ...(taskData.assigned_to ? [taskData.assigned_to] : [])
+    ]));
+
     let newAcks = [];
 
-    if (taskData.tagged_user_ids && taskData.tagged_user_ids.length > 0) {
-      newAcks = taskData.tagged_user_ids.map(uid => {
+    if (allAssignedIds.length > 0) {
+      newAcks = allAssignedIds.map(uid => {
         const uInfo = allUsers.find(u => u.id === uid);
         return {
           id: 'ack-' + Math.random().toString(36).substr(2, 9),
@@ -638,6 +736,11 @@ export const TaskProvider = ({ children }) => {
       task_type: isTeamTask ? 'team' : 'personal',
       created_by: currentUserId,
       assigned_to: assignedTo,
+      assigned_users: assignedUsers,
+      recurrence_rule: taskData.recurrence_rule || null,
+      google_event_id: taskData.google_event_id || null,
+      is_urgent: taskData.is_urgent ?? false,
+      is_important: taskData.is_important ?? false,
       subtasks: [],
       task_acknowledgements: newAcks,
       task_attachments: [],
@@ -663,21 +766,56 @@ export const TaskProvider = ({ children }) => {
           task_type_id: newTaskObj.task_type_id,
           list_id: newTaskObj.list_id,
           created_by: currentUserId,
-          assigned_to: assignedTo
+          assigned_to: assignedTo,
+          assigned_users: assignedUsers,
+          recurrence_rule: newTaskObj.recurrence_rule,
+          google_event_id: newTaskObj.google_event_id,
+          is_urgent: newTaskObj.is_urgent,
+          is_important: newTaskObj.is_important
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Insert team member acknowledgements if team task
-      if (data && taskData.tagged_user_ids?.length > 0) {
-        const acksToInsert = taskData.tagged_user_ids.map(uid => ({
+      // Insert member acknowledgements for all assigned / tagged users
+      if (data && allAssignedIds.length > 0) {
+        const acksToInsert = allAssignedIds.map(uid => ({
           task_id: data.id,
           user_id: uid,
           is_acknowledged: false
         }));
-        await supabase.from('task_acknowledgements').insert(acksToInsert);
+        await supabase.from('task_acknowledgements').upsert(acksToInsert, { onConflict: 'task_id,user_id' });
+      }
+
+      // Ensure notification is recorded for real-time delivery
+      const usersToNotify = isTeamTask
+        ? (taskData.tagged_user_ids || [])
+        : assignedUsers;
+
+      if (data && usersToNotify.length > 0) {
+        try {
+          const listObj = lists.find(l => l.id === newTaskObj.list_id);
+          const notifs = usersToNotify
+            .filter(uid => uid !== currentUserId)
+            .map(uid => ({
+              user_id: uid,
+              actor_id: currentUserId,
+              type: 'task_assigned',
+              entity_id: data.id,
+              message_data: {
+                task_title: newTaskObj.title,
+                list_name: listObj?.name || 'Inbox',
+                actor_name: profile?.full_name || user?.email?.split('@')[0] || 'Team Member'
+              },
+              is_read: false
+            }));
+          if (notifs.length > 0) {
+            await supabase.from('notifications').insert(notifs);
+          }
+        } catch (notifErr) {
+          // Non-blocking if table or trigger handled it
+        }
       }
 
       await fetchInitialData();
@@ -693,24 +831,30 @@ export const TaskProvider = ({ children }) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return false;
 
-    // Strict Rule: A team task cannot be marked complete if ANY team member is still working
+    // Strict Rule: A task cannot be marked complete if ANY assigned member is still working
     const isCompletedStatus = updates.status_id && dropdownStatuses.find(st => st.id === updates.status_id)?.is_completed_state;
     const willBeCompleted = updates.is_completed === true || isCompletedStatus;
 
     if (willBeCompleted && !targetTask.is_completed) {
-      const isTeam = targetTask.task_type === 'team' || (targetTask.task_acknowledgements && targetTask.task_acknowledgements.length > 0);
+      const acks = targetTask.task_acknowledgements || [];
+      const hasMultipleAssignees = Array.isArray(targetTask.assigned_users) && targetTask.assigned_users.length > 1;
+      const isTeam = targetTask.task_type === 'team' || acks.length > 0 || hasMultipleAssignees;
+
       if (isTeam) {
-        const pendingMembers = (targetTask.task_acknowledgements || []).filter(a => !a.is_acknowledged);
+        const pendingMembers = acks.filter(a => !a.is_acknowledged);
         if (pendingMembers.length > 0) {
           const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
-          toast.error(`Cannot complete task! ${pendingMembers.length} team member(s) still working on it: ${names}`, { duration: 6000 });
+          toast.error(`🔒 Task Locked! ${pendingMembers.length} member(s) still working (${names}). All assigned members must mark their part done first.`, {
+            id: `task-locked-${taskId}`,
+            duration: 6000
+          });
           return false;
         }
       }
     }
 
     const sanitizeUuid = (val) => (val && typeof val === 'string' && val.includes('-') && val.length > 10) ? val : undefined;
-    
+
     // Sanitize any incoming dropdown updates to prevent Postgres UUID crash
     const sanitizedUpdates = { ...updates };
     if (sanitizedUpdates.priority_id !== undefined) sanitizedUpdates.priority_id = sanitizeUuid(sanitizedUpdates.priority_id) || null;
@@ -719,6 +863,42 @@ export const TaskProvider = ({ children }) => {
     if (sanitizedUpdates.list_id !== undefined) {
       if (sanitizedUpdates.list_id && sanitizedUpdates.list_id.startsWith('list-')) {
         sanitizedUpdates.list_id = null;
+      }
+    }
+    if (sanitizedUpdates.recurrence_rule !== undefined) {
+      sanitizedUpdates.recurrence_rule = sanitizedUpdates.recurrence_rule || null;
+    }
+    if (sanitizedUpdates.assigned_users !== undefined) {
+      if (Array.isArray(sanitizedUpdates.assigned_users)) {
+        sanitizedUpdates.assigned_users = sanitizedUpdates.assigned_users.filter(u => typeof u === 'string');
+        sanitizedUpdates.assigned_to = sanitizedUpdates.assigned_users[0] || null;
+
+        // Auto-sync acknowledgements for newly assigned users
+        const currentAcks = targetTask.task_acknowledgements || [];
+        const currentAckUserIds = currentAcks.map(a => a.user_id);
+        const addedUserIds = sanitizedUpdates.assigned_users.filter(uid => !currentAckUserIds.includes(uid));
+
+        if (addedUserIds.length > 0) {
+          if (!isDemoMode && isSupabaseConfigured()) {
+            const acksToInsert = addedUserIds.map(uid => ({
+              task_id: taskId,
+              user_id: uid,
+              is_acknowledged: false
+            }));
+            supabase.from('task_acknowledgements').upsert(acksToInsert, { onConflict: 'task_id,user_id' }).then(() => { });
+          } else {
+            const newLocalAcks = addedUserIds.map(uid => {
+              const uInfo = allUsers.find(u => u.id === uid);
+              return {
+                id: 'ack-' + Math.random().toString(36).substr(2, 9),
+                user_id: uid,
+                full_name: uInfo?.full_name || uInfo?.email || 'Member',
+                is_acknowledged: false
+              };
+            });
+            sanitizedUpdates.task_acknowledgements = [...currentAcks, ...newLocalAcks];
+          }
+        }
       }
     }
 
@@ -737,6 +917,33 @@ export const TaskProvider = ({ children }) => {
         toast.error(error.message);
         return false;
       }
+
+      // If assigned members changed and new members were assigned, trigger notification
+      const prevAssignees = Array.isArray(targetTask.assigned_users) ? targetTask.assigned_users : [targetTask.assigned_to].filter(Boolean);
+      const nextAssignees = Array.isArray(sanitizedUpdates.assigned_users) ? sanitizedUpdates.assigned_users : (sanitizedUpdates.assigned_to ? [sanitizedUpdates.assigned_to] : []);
+      const newAssignees = nextAssignees.filter(uid => !prevAssignees.includes(uid) && uid !== currentUserId);
+
+      if (newAssignees.length > 0) {
+        try {
+          const listObj = lists.find(l => l.id === (sanitizedUpdates.list_id || targetTask.list_id));
+          const notifs = newAssignees.map(uid => ({
+            user_id: uid,
+            actor_id: currentUserId,
+            type: 'task_assigned',
+            entity_id: taskId,
+            message_data: {
+              task_title: sanitizedUpdates.title || targetTask.title,
+              list_name: listObj?.name || 'Inbox',
+              actor_name: profile?.full_name || user?.email?.split('@')[0] || 'Team Member'
+            },
+            is_read: false
+          }));
+          await supabase.from('notifications').insert(notifs);
+        } catch (notifErr) {
+          // Handled safely
+        }
+      }
+
       await fetchInitialData();
       return true;
     } catch (err) {
@@ -748,19 +955,40 @@ export const TaskProvider = ({ children }) => {
   const toggleTaskCompletion = async (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return false;
-    
+
     // Strict Business Logic Check (Only when marking AS DONE)
     if (!targetTask.is_completed) {
-      const isTeam = targetTask.task_type === 'team' || (targetTask.task_acknowledgements && targetTask.task_acknowledgements.length > 0);
+      const acks = targetTask.task_acknowledgements || [];
+      const hasMultipleAssignees = Array.isArray(targetTask.assigned_users) && targetTask.assigned_users.length > 1;
+      const isTeam = targetTask.task_type === 'team' || acks.length > 0 || hasMultipleAssignees;
+
       if (isTeam) {
-        const pendingMembers = (targetTask.task_acknowledgements || []).filter(a => !a.is_acknowledged);
+        const pendingMembers = acks.filter(a => !a.is_acknowledged);
         if (pendingMembers.length > 0) {
           const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
-          toast.error(`Cannot complete task! ${pendingMembers.length} team member(s) still working on it: ${names}`, { 
+          toast.error(`🔒 Cannot complete task! ${pendingMembers.length} assigned member(s) still working: ${names}. All assigned members must mark their part done first.`, {
             id: `task-locked-${taskId}`,
-            duration: 4000 
+            duration: 6000
           });
           return false;
+        }
+      }
+
+      // ── ADVANCED RECURRING TASK ROLLOVER (RRULE) ──
+      if (targetTask.recurrence_rule) {
+        const nextOccurrence = getNextOccurrence(targetTask.recurrence_rule, targetTask.due_date, new Date());
+        if (nextOccurrence) {
+          const formattedNext = format(nextOccurrence, 'MMM d, yyyy');
+          toast.success(`🔁 Completed instance! Next occurrence: ${formattedNext}`, {
+            id: `task-repeat-${taskId}`,
+            duration: 3500
+          });
+
+          // Rollover: update due_date to the next occurrence, keep is_completed = false
+          return await updateTask(taskId, {
+            due_date: nextOccurrence.toISOString(),
+            is_completed: false
+          });
         }
       }
     }
@@ -819,8 +1047,8 @@ export const TaskProvider = ({ children }) => {
 
     const updatedAcks = (task.task_acknowledgements || []).map(ack => {
       if (ack.id === ackId || ack.user_id === targetUserId) {
-        return { 
-          ...ack, 
+        return {
+          ...ack,
           is_acknowledged: newStatus,
           acknowledged_at: newStatus ? new Date().toISOString() : null
         };
@@ -857,7 +1085,7 @@ export const TaskProvider = ({ children }) => {
     try {
       const { error } = await supabase
         .from('task_acknowledgements')
-        .update({ 
+        .update({
           is_acknowledged: newStatus,
           acknowledged_at: newStatus ? new Date().toISOString() : null
         })
@@ -1145,7 +1373,7 @@ export const TaskProvider = ({ children }) => {
   const createTeam = async (teamName, memberEmails = []) => {
     const newTeamId = 'team-' + Date.now();
     const cleanIdentifiers = memberEmails.map(e => String(e).trim().toLowerCase());
-    const validUsers = allUsers ? allUsers.filter(u => 
+    const validUsers = allUsers ? allUsers.filter(u =>
       cleanIdentifiers.includes(String(u.email || '').toLowerCase()) ||
       cleanIdentifiers.includes(String(u.full_name || '').toLowerCase()) ||
       cleanIdentifiers.includes(String(u.id || '').toLowerCase())
@@ -1233,7 +1461,7 @@ export const TaskProvider = ({ children }) => {
 
   const addTeamMember = async (teamId, identifier) => {
     const cleanId = String(identifier || '').trim().toLowerCase();
-    const validUser = allUsers.find(u => 
+    const validUser = allUsers.find(u =>
       u.id === identifier ||
       (u.email && u.email.toLowerCase() === cleanId) ||
       (u.full_name && u.full_name.toLowerCase() === cleanId)
@@ -1242,7 +1470,7 @@ export const TaskProvider = ({ children }) => {
       toast.error('User not found. They must sign up first.', { id: 'team-user-not-found' });
       return;
     }
-    
+
     if (isDemoMode || !isSupabaseConfigured()) {
       setTeams(prev => prev.map(t => {
         if (t.id === teamId) {
@@ -1269,8 +1497,8 @@ export const TaskProvider = ({ children }) => {
         role: 'member'
       });
       if (error && error.code === '23505') {
-         toast.error('User is already in the team!', { id: 'team-user-duplicate' });
-         return;
+        toast.error('User is already in the team!', { id: 'team-user-duplicate' });
+        return;
       }
       if (error && error.code === '23503') {
         // Foreign key constraint (user exists in candidates list but not in remote auth.users)
@@ -1337,6 +1565,126 @@ export const TaskProvider = ({ children }) => {
     } catch (err) {
       toast.error('Error deleting team: ' + err.message);
     }
+  };
+  // ─────────────────────────────────────────────────
+  // User Management CRUD (for Admin & Team Control)
+  // ─────────────────────────────────────────────────
+  const createUser = async ({ email, fullName, role, password, avatar_id }) => {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      toast.error('Email is required');
+      return null;
+    }
+    const cleanName = String(fullName || '').trim() || cleanEmail.split('@')[0];
+    const userRole = role || 'member';
+    const chosenAvatar = avatar_id || `avatar-${Math.floor(Math.random() * 20 + 1)}`;
+    const userPassword = password || 'Password123!';
+
+    // If previously marked as deleted, remove from deleted IDs
+    const deleted = getDeletedUserIds();
+    if (deleted.includes(cleanEmail)) {
+      const updated = deleted.filter(id => id !== cleanEmail);
+      localStorage.setItem('tasker_deleted_user_ids', JSON.stringify(updated));
+    }
+
+    const newUserObj = {
+      id: 'usr-' + Date.now(),
+      email: cleanEmail,
+      full_name: cleanName,
+      role: userRole,
+      avatar_id: chosenAvatar,
+      created_at: new Date().toISOString()
+    };
+
+    if (isDemoMode || !isSupabaseConfigured()) {
+      setAllUsers(prev => [newUserObj, ...prev.filter(u => u.email?.toLowerCase() !== cleanEmail)]);
+      toast.success(`User "${cleanName}" created successfully!`);
+      return newUserObj;
+    }
+
+    try {
+      // 1. Attempt Supabase Auth Sign Up using isolated client (never touches active session)
+      try {
+        const isolated = createIsolatedClient();
+        const { data: authData, error: authError } = await isolated.auth.signUp({
+          email: cleanEmail,
+          password: userPassword,
+          options: {
+            data: {
+              full_name: cleanName,
+              role: userRole,
+              avatar_id: chosenAvatar
+            }
+          }
+        });
+        if (authError) {
+          console.warn('[createUser] Isolated signUp message:', authError.message);
+        } else if (authData?.user?.id) {
+          newUserObj.id = authData.user.id;
+        }
+      } catch (authErr) {
+        console.warn('[createUser] Auth signUp skipped:', authErr);
+      }
+
+      // 2. Upsert profile into public.profiles if UUID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newUserObj.id);
+      if (isUuid) {
+        const { error: profileError } = await supabase.from('profiles').upsert({
+          id: newUserObj.id,
+          email: newUserObj.email,
+          full_name: newUserObj.full_name,
+          role: newUserObj.role,
+          avatar_id: newUserObj.avatar_id
+        });
+
+        if (profileError) {
+          console.warn('[createUser] Profile upsert note:', profileError.message);
+        }
+      }
+
+      setAllUsers(prev => [newUserObj, ...prev.filter(u => u.id !== newUserObj.id && u.email?.toLowerCase() !== cleanEmail)]);
+      toast.success(`User "${cleanName}" created successfully!`);
+      return newUserObj;
+    } catch (err) {
+      setAllUsers(prev => [newUserObj, ...prev.filter(u => u.email?.toLowerCase() !== cleanEmail)]);
+      toast.success(`User "${cleanName}" created locally!`);
+      return newUserObj;
+    }
+  };
+
+  const deleteUser = async (targetUserId) => {
+    if (!targetUserId) return;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUserId);
+
+    // Track in deleted user IDs to prevent default users from resurrecting
+    const userToDelete = allUsers.find(u => u.id === targetUserId);
+    const deleted = getDeletedUserIds();
+    if (!deleted.includes(targetUserId)) {
+      deleted.push(targetUserId);
+    }
+    if (userToDelete?.email && !deleted.includes(userToDelete.email.toLowerCase())) {
+      deleted.push(userToDelete.email.toLowerCase());
+    }
+    localStorage.setItem('tasker_deleted_user_ids', JSON.stringify(deleted));
+
+    if (isSupabaseConfigured() && !isDemoMode && isUuid) {
+      try {
+        const { error } = await supabase.rpc('delete_user_account', { target_user_id: targetUserId });
+        if (error) {
+          await supabase.from('profiles').delete().eq('id', targetUserId);
+        }
+      } catch (err) {
+        try {
+          await supabase.from('profiles').delete().eq('id', targetUserId);
+        } catch (e) {
+          console.warn('Could not delete from Supabase profiles:', e);
+        }
+      }
+    }
+
+    // Always remove from local allUsers state
+    setAllUsers(prev => prev.filter(u => u.id !== targetUserId && u.email?.toLowerCase() !== userToDelete?.email?.toLowerCase()));
+    toast.success("User deleted successfully!");
   };
 
   // ─────────────────────────────────────────────────
@@ -1411,7 +1759,16 @@ export const TaskProvider = ({ children }) => {
       addTeamMember,
       removeTeamMember,
       deleteTeam,
+      createUser,
+      deleteUser,
+      groupBy,
+      setGroupBy,
+      sortBy,
+      setSortBy,
+      order,
+      setOrder,
       refreshTasks,
+      fetchTasks: refreshTasks,
     }}>
       {children}
     </TaskContext.Provider>
