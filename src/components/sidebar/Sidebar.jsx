@@ -3,11 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
 import { getAvatarUrl } from '../../lib/avatars';
 import { 
-  Inbox, Calendar, CalendarDays, Folder, Users, Plus, ChevronLeft, 
-  ChevronRight, LogOut, User, Sparkles, Shield, GitFork, Settings, 
+  Inbox, Layers, Calendar, CalendarDays, Folder, Users, Plus, ChevronLeft, 
+  ChevronRight, LogOut, User, UserCheck, Sparkles, Shield, GitFork, Settings, 
   CheckSquare, ShieldAlert, MonitorDown, Bell, LayoutGrid 
 } from 'lucide-react';
-import { isToday, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
+import { isToday, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { SoundToggle } from '../common/SoundToggle';
 import { useNotifications } from '../../context/NotificationContext';
@@ -30,11 +30,12 @@ export const Sidebar = ({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Compute Task Counts for Smart Lists with safe fallback handling
-  const countInbox = (allTasks || []).filter(t => !t?.is_completed).length;
+  const countAll = (allTasks || []).filter(t => !t?.is_completed).length;
   const countToday = (allTasks || []).filter(t => {
     if (t?.is_completed || !t?.due_date) return false;
     try {
-      return isToday(parseISO(t.due_date));
+      const d = parseISO(t.due_date);
+      return isToday(d) || isPast(d);
     } catch (e) {
       return false;
     }
@@ -48,6 +49,13 @@ export const Sidebar = ({
     } catch (e) {
       return false;
     }
+  }).length;
+
+  const countAssignedMe = (allTasks || []).filter(t => {
+    if (t?.is_completed) return false;
+    const assignedList = Array.isArray(t?.assigned_users) ? t.assigned_users : [];
+    const myId = user?.id || profile?.id;
+    return assignedList.includes(myId) || t?.assigned_to === myId;
   }).length;
 
   const getListTaskCount = (listId) => {
@@ -186,32 +194,36 @@ export const Sidebar = ({
         <div>
           {!isCollapsed && <div className="px-2 mb-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Smart Views</div>}
           <div className="space-y-0.5">
+            {/* 1. All Tasks */}
             <button
-              onClick={() => { setSelectedListId('list-inbox'); setActiveView('tasks'); }}
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
-                selectedListId === 'list-inbox' && activeView === 'tasks'
+              onClick={() => { setSelectedListId('list-all'); setActiveView('tasks'); }}
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                (selectedListId === 'list-all' || selectedListId === 'list-inbox') && activeView === 'tasks'
                   ? 'bg-blue-600 text-white font-semibold shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#26272e] dark:hover:text-white'
               }`}
+              title="All Tasks"
             >
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
-                <Inbox className={`w-4 h-4 shrink-0 ${selectedListId === 'list-inbox' && activeView === 'tasks' ? 'text-white' : 'text-blue-500 dark:text-blue-400'}`} />
-                {!isCollapsed && <span className="truncate">Inbox</span>}
+                <Layers className={`w-4 h-4 shrink-0 ${(selectedListId === 'list-all' || selectedListId === 'list-inbox') && activeView === 'tasks' ? 'text-white' : 'text-blue-500 dark:text-blue-400'}`} />
+                {!isCollapsed && <span className="truncate">All</span>}
               </div>
-              {!isCollapsed && countInbox > 0 && (
-                <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-inbox' && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
-                  {countInbox}
+              {!isCollapsed && countAll > 0 && (
+                <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${(selectedListId === 'list-all' || selectedListId === 'list-inbox') && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  {countAll}
                 </span>
               )}
             </button>
 
+            {/* 2. Today + Overdue */}
             <button
               onClick={() => { setSelectedListId('list-today'); setActiveView('tasks'); }}
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                 selectedListId === 'list-today' && activeView === 'tasks'
                   ? 'bg-blue-600 text-white font-semibold shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#26272e] dark:hover:text-white'
               }`}
+              title="Today & Overdue Tasks"
             >
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                 <Calendar className={`w-4 h-4 shrink-0 ${selectedListId === 'list-today' && activeView === 'tasks' ? 'text-white' : 'text-emerald-500 dark:text-emerald-400'}`} />
@@ -224,13 +236,15 @@ export const Sidebar = ({
               )}
             </button>
 
+            {/* 3. Next 7 Days */}
             <button
               onClick={() => { setSelectedListId('list-next7'); setActiveView('tasks'); }}
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                 selectedListId === 'list-next7' && activeView === 'tasks'
                   ? 'bg-blue-600 text-white font-semibold shadow-xs'
                   : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#26272e] dark:hover:text-white'
               }`}
+              title="Next 7 Days"
             >
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                 <CalendarDays className={`w-4 h-4 shrink-0 ${selectedListId === 'list-next7' && activeView === 'tasks' ? 'text-white' : 'text-purple-500 dark:text-purple-400'}`} />
@@ -239,6 +253,27 @@ export const Sidebar = ({
               {!isCollapsed && countNext7 > 0 && (
                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-next7' && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
                   {countNext7}
+                </span>
+              )}
+            </button>
+
+            {/* 4. Assigned to me */}
+            <button
+              onClick={() => { setSelectedListId('list-assigned-me'); setActiveView('tasks'); }}
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                selectedListId === 'list-assigned-me' && activeView === 'tasks'
+                  ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#26272e] dark:hover:text-white'
+              }`}
+              title="Assigned to me"
+            >
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
+                <UserCheck className={`w-4 h-4 shrink-0 ${selectedListId === 'list-assigned-me' && activeView === 'tasks' ? 'text-white' : 'text-amber-500 dark:text-amber-400'}`} />
+                {!isCollapsed && <span className="truncate">Assigned to me</span>}
+              </div>
+              {!isCollapsed && countAssignedMe > 0 && (
+                <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-assigned-me' && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  {countAssignedMe}
                 </span>
               )}
             </button>

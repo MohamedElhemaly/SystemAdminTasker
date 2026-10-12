@@ -14,7 +14,8 @@ export const RepeatDropdown = ({
   onChange,
   dueDate,
   buttonClassName = '',
-  align = 'left'
+  align = 'left',
+  disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState('presets'); // 'presets' | 'custom'
@@ -112,11 +113,15 @@ export const RepeatDropdown = ({
       {/* Trigger Button */}
       <button
         type="button"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           setIsOpen(prev => !prev);
           setView('presets');
         }}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer shadow-xs ${
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all shadow-xs ${
+          disabled ? 'opacity-60 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
+        } ${
           isRecurring
             ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40 font-semibold'
             : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 dark:bg-[#28292f] dark:hover:bg-slate-800 dark:text-slate-300 dark:border-slate-700/80'

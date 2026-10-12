@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseConfigured, createIsolatedClient } from '../lib/supabase';
-import { isToday, isTomorrow, isWithinInterval, addDays, startOfDay, endOfDay, parseISO, format } from 'date-fns';
+import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO, format } from 'date-fns';
 import { getNextOccurrence } from '../lib/rruleHelper';
+import { calculateNextReminderAt } from '../lib/reminderHelper';
 import toast from 'react-hot-toast';
 
 const TaskContext = createContext({});
@@ -11,9 +12,10 @@ const TaskContext = createContext({});
 // Static System Smart Lists (never persisted / never change)
 // ─────────────────────────────────────────────────────
 const SYSTEM_SMART_LISTS = [
-  { id: 'list-inbox', name: 'Inbox', color: '#3b82f6', icon: 'inbox', is_smart: true },
+  { id: 'list-all', name: 'All', color: '#3b82f6', icon: 'layers', is_smart: true },
   { id: 'list-today', name: 'Today', color: '#10b981', icon: 'today', is_smart: true },
-  { id: 'list-next7', name: 'Next 7 Days', color: '#8b5cf6', icon: 'calendar', is_smart: true }
+  { id: 'list-next7', name: 'Next 7 Days', color: '#8b5cf6', icon: 'calendar', is_smart: true },
+  { id: 'list-assigned-me', name: 'Assigned to me', color: '#f59e0b', icon: 'user', is_smart: true }
 ];
 
 // ─────────────────────────────────────────────────────
@@ -54,6 +56,10 @@ const DEFAULT_USERS = [
   { id: 'usr-5', email: 'elena.r@ticktick-team.com', full_name: 'Elena Rostova', avatar_id: 'avatar-17', role: 'member' },
   { id: 'usr-6', email: 'david.b@ticktick-team.com', full_name: 'David Beckham', avatar_id: 'avatar-15', role: 'member' }
 ];
+
+// Tracks whether the 'status' and dual approval columns are present on public.tasks in Supabase
+let isStatusColumnSupported = null;
+let isDualApprovalSupported = null;
 
 // Helper: purge any legacy sample/mockup tasks from localStorage caches
 const purgeMockTasksFromStorage = () => {
@@ -108,7 +114,7 @@ export const TaskProvider = ({ children }) => {
   const [dropdownTaskTypes, setDropdownTaskTypes] = useState(DEFAULT_TASK_TYPES);
   const [dropdownTags, setDropdownTags] = useState(DEFAULT_TAGS);
 
-  const [selectedListId, setSelectedListId] = useState('list-inbox');
+  const [selectedListId, setSelectedListId] = useState('list-all');
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -169,7 +175,7 @@ export const TaskProvider = ({ children }) => {
     setDropdownStatuses(DEFAULT_STATUSES);
     setDropdownTaskTypes(DEFAULT_TASK_TYPES);
     setDropdownTags(DEFAULT_TAGS);
-    setSelectedListId('list-inbox');
+    setSelectedListId('list-all');
     setSelectedTaskId(null);
     setLoading(false);
 
@@ -421,17 +427,46 @@ export const TaskProvider = ({ children }) => {
       if (tasksErr) throw tasksErr;
 
       if (tasksData) {
-        const formattedTasks = tasksData.map(t => ({
-          ...t,
-          assigned_users: Array.isArray(t.assigned_users) && t.assigned_users.length > 0
-            ? t.assigned_users
-            : (t.assigned_to ? [t.assigned_to] : []),
-          tags: (t.task_tag_mapping || []).map(m => m.dropdown_tags).filter(Boolean),
-          task_acknowledgements: (t.task_acknowledgements || []).map(ack => ({
-            ...ack,
-            full_name: ack.profiles?.full_name || ack.profiles?.email || 'Team Member'
-          }))
-        }));
+        if (tasksData.length > 0) {
+          isStatusColumnSupported = 'status' in tasksData[0];
+          isDualApprovalSupported = 'manager_approved' in tasksData[0];
+        }
+        let localApprovals = {};
+        try {
+          localApprovals = JSON.parse(localStorage.getItem('tasker_dual_approvals') || '{}');
+        } catch (e) {}
+
+        const formattedTasks = tasksData.map(t => {
+          const statusObj = dropdownStatuses.find(st => st.id === t.status_id);
+          const computedStatus = t.status || (
+            t.is_completed ? 'completed' :
+            statusObj?.name?.toLowerCase().includes('review') ? 'under_review' :
+            'to_do'
+          );
+
+          const localAppr = localApprovals[t.id] || {};
+          const managerApproved = t.manager_approved !== undefined ? Boolean(t.manager_approved) : (t.is_completed ? true : Boolean(localAppr.manager_approved));
+          const subManagerApproved = t.sub_manager_approved !== undefined ? Boolean(t.sub_manager_approved) : (t.is_completed ? true : Boolean(localAppr.sub_manager_approved));
+
+          return {
+            ...t,
+            status: computedStatus,
+            manager_approved: managerApproved,
+            sub_manager_approved: subManagerApproved,
+            manager_approved_by: t.manager_approved_by || localAppr.manager_approved_by || null,
+            sub_manager_approved_by: t.sub_manager_approved_by || localAppr.sub_manager_approved_by || null,
+            manager_approved_at: t.manager_approved_at || localAppr.manager_approved_at || null,
+            sub_manager_approved_at: t.sub_manager_approved_at || localAppr.sub_manager_approved_at || null,
+            assigned_users: Array.isArray(t.assigned_users) && t.assigned_users.length > 0
+              ? t.assigned_users
+              : (t.assigned_to ? [t.assigned_to] : []),
+            tags: (t.task_tag_mapping || []).map(m => m.dropdown_tags).filter(Boolean),
+            task_acknowledgements: (t.task_acknowledgements || []).map(ack => ({
+              ...ack,
+              full_name: ack.profiles?.full_name || ack.profiles?.email || 'Team Member'
+            }))
+          };
+        });
         setTasks(formattedTasks);
       } else {
         setTasks([]);
@@ -741,6 +776,13 @@ export const TaskProvider = ({ children }) => {
       google_event_id: taskData.google_event_id || null,
       is_urgent: taskData.is_urgent ?? false,
       is_important: taskData.is_important ?? false,
+      reminder_offset_days: taskData.reminder_offset_days !== undefined ? taskData.reminder_offset_days : null,
+      reminder_time: taskData.reminder_time || (taskData.reminder_offset_days !== null && taskData.reminder_offset_days !== undefined ? '09:00:00' : null),
+      next_reminder_at: taskData.next_reminder_at || (taskData.reminder_offset_days !== null && taskData.reminder_offset_days !== undefined
+        ? calculateNextReminderAt(taskData.due_date, taskData.reminder_offset_days, taskData.reminder_time)
+        : null),
+      is_reminder_sent: false,
+      is_constant_reminder: Boolean(taskData.is_constant_reminder),
       subtasks: [],
       task_acknowledgements: newAcks,
       task_attachments: [],
@@ -771,7 +813,12 @@ export const TaskProvider = ({ children }) => {
           recurrence_rule: newTaskObj.recurrence_rule,
           google_event_id: newTaskObj.google_event_id,
           is_urgent: newTaskObj.is_urgent,
-          is_important: newTaskObj.is_important
+          is_important: newTaskObj.is_important,
+          reminder_offset_days: newTaskObj.reminder_offset_days,
+          reminder_time: newTaskObj.reminder_time,
+          next_reminder_at: newTaskObj.next_reminder_at,
+          is_reminder_sent: newTaskObj.is_reminder_sent,
+          is_constant_reminder: newTaskObj.is_constant_reminder
         })
         .select()
         .single();
@@ -853,6 +900,24 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    // Strict Member Governance Check:
+    const userRole = profile?.role || 'member';
+    const isManagerOrSub = ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(userRole);
+
+    if (!isManagerOrSub) {
+      // Members are ONLY permitted to transition status to 'under_review' (e.g. via Done button)
+      const allowedKeys = ['status', 'status_id', 'is_completed', 'updated_at'];
+      const forbiddenEditedKeys = Object.keys(updates).filter(k => !allowedKeys.includes(k));
+      if (forbiddenEditedKeys.length > 0) {
+        toast.error('Members are not allowed to edit task details');
+        return false;
+      }
+      if (updates.status && updates.status !== 'under_review') {
+        toast.error('Members can only submit tasks for manager review');
+        return false;
+      }
+    }
+
     const sanitizeUuid = (val) => (val && typeof val === 'string' && val.includes('-') && val.length > 10) ? val : undefined;
 
     // Sanitize any incoming dropdown updates to prevent Postgres UUID crash
@@ -868,6 +933,22 @@ export const TaskProvider = ({ children }) => {
     if (sanitizedUpdates.recurrence_rule !== undefined) {
       sanitizedUpdates.recurrence_rule = sanitizedUpdates.recurrence_rule || null;
     }
+
+    // Auto-sync status, status_id, and is_completed
+    if (sanitizedUpdates.status === 'under_review') {
+      const reviewStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('review'));
+      if (reviewStatus) sanitizedUpdates.status_id = reviewStatus.id;
+      sanitizedUpdates.is_completed = false;
+    } else if (sanitizedUpdates.status === 'completed') {
+      const compStatus = dropdownStatuses.find(st => st.is_completed_state || st.name.toLowerCase().includes('complete'));
+      if (compStatus) sanitizedUpdates.status_id = compStatus.id;
+      sanitizedUpdates.is_completed = true;
+    } else if (sanitizedUpdates.status === 'to_do') {
+      const todoStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('to do'));
+      if (todoStatus) sanitizedUpdates.status_id = todoStatus.id;
+      sanitizedUpdates.is_completed = false;
+    }
+
     if (sanitizedUpdates.assigned_users !== undefined) {
       if (Array.isArray(sanitizedUpdates.assigned_users)) {
         sanitizedUpdates.assigned_users = sanitizedUpdates.assigned_users.filter(u => typeof u === 'string');
@@ -902,16 +983,93 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    // Handle Reminder Properties & Recalculate next_reminder_at
+    if (sanitizedUpdates.reminder_offset_days !== undefined) {
+      if (sanitizedUpdates.reminder_offset_days === null) {
+        sanitizedUpdates.reminder_offset_days = null;
+        sanitizedUpdates.reminder_time = null;
+        sanitizedUpdates.next_reminder_at = null;
+        sanitizedUpdates.is_reminder_sent = false;
+        sanitizedUpdates.is_constant_reminder = false;
+      } else {
+        const effectiveDueDate = sanitizedUpdates.due_date !== undefined ? sanitizedUpdates.due_date : targetTask.due_date;
+        const effectiveTime = sanitizedUpdates.reminder_time !== undefined ? sanitizedUpdates.reminder_time : (targetTask.reminder_time || '09:00:00');
+        sanitizedUpdates.reminder_time = effectiveTime;
+        if (sanitizedUpdates.next_reminder_at === undefined) {
+          sanitizedUpdates.next_reminder_at = calculateNextReminderAt(effectiveDueDate, sanitizedUpdates.reminder_offset_days, effectiveTime);
+        }
+        sanitizedUpdates.is_reminder_sent = false;
+      }
+    } else if (sanitizedUpdates.due_date !== undefined && sanitizedUpdates.next_reminder_at === undefined) {
+      if (targetTask.reminder_offset_days !== null && targetTask.reminder_offset_days !== undefined) {
+        const effectiveTime = sanitizedUpdates.reminder_time !== undefined ? sanitizedUpdates.reminder_time : (targetTask.reminder_time || '09:00:00');
+        sanitizedUpdates.next_reminder_at = calculateNextReminderAt(sanitizedUpdates.due_date, targetTask.reminder_offset_days, effectiveTime);
+        sanitizedUpdates.is_reminder_sent = false;
+      }
+    }
+
     if (isDemoMode || !isSupabaseConfigured()) {
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...sanitizedUpdates } : t));
       return true;
     }
 
     try {
-      const { error } = await supabase
+      let dbPayload = { ...sanitizedUpdates };
+      delete dbPayload.tags;
+      delete dbPayload.subtasks;
+      delete dbPayload.task_attachments;
+      delete dbPayload.task_acknowledgements;
+      delete dbPayload.profiles;
+      delete dbPayload.creator;
+      delete dbPayload.assignee;
+      delete dbPayload.task_tag_mapping;
+
+      if (isStatusColumnSupported === false) {
+        delete dbPayload.status;
+      }
+      if (isDualApprovalSupported === false) {
+        delete dbPayload.manager_approved;
+        delete dbPayload.sub_manager_approved;
+        delete dbPayload.manager_approved_by;
+        delete dbPayload.sub_manager_approved_by;
+        delete dbPayload.manager_approved_at;
+        delete dbPayload.sub_manager_approved_at;
+      }
+
+      let { error } = await supabase
         .from('tasks')
-        .update(sanitizedUpdates)
+        .update(dbPayload)
         .eq('id', taskId);
+
+      // If the remote table doesn't have the new 'status' or dual approval columns in schema cache, retry without them
+      if (error && (
+        error.message?.includes("'status'") ||
+        error.message?.includes("'manager_approved'") ||
+        error.message?.includes("'sub_manager_approved'") ||
+        error.message?.includes('schema cache') ||
+        error.code === 'PGRST204'
+      )) {
+        console.warn("Table 'tasks' schema cache missing newly added columns. Falling back to core columns.");
+        if (error.message?.includes("'status'")) {
+          isStatusColumnSupported = false;
+        }
+        if (error.message?.includes('manager_approved') || error.message?.includes('sub_manager_approved')) {
+          isDualApprovalSupported = false;
+        }
+        delete dbPayload.status;
+        delete dbPayload.manager_approved;
+        delete dbPayload.sub_manager_approved;
+        delete dbPayload.manager_approved_by;
+        delete dbPayload.sub_manager_approved_by;
+        delete dbPayload.manager_approved_at;
+        delete dbPayload.sub_manager_approved_at;
+
+        const retry = await supabase
+          .from('tasks')
+          .update(dbPayload)
+          .eq('id', taskId);
+        error = retry.error;
+      }
 
       if (error) {
         toast.error(error.message);
@@ -956,57 +1114,276 @@ export const TaskProvider = ({ children }) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return false;
 
+    const userRole = profile?.role || 'member';
+    const isManagerRole = ['manager', 'admin'].includes(userRole);
+    const isSubManagerRole = ['sub_manager', 'deputy_manager'].includes(userRole);
+    const isAdmin = userRole === 'admin';
+    const isManagerOrSub = isManagerRole || isSubManagerRole || isAdmin;
+
+    // If currently completed, toggling un-completes back to To Do
+    if (targetTask.is_completed) {
+      const todoStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('to do')) || dropdownStatuses[0];
+      toast(`Task returned to active: "${targetTask.title}"`, {
+        id: `task-active-${taskId}`,
+        duration: 2000
+      });
+
+      // Clear localStorage dual approval
+      try {
+        const stored = JSON.parse(localStorage.getItem('tasker_dual_approvals') || '{}');
+        delete stored[taskId];
+        localStorage.setItem('tasker_dual_approvals', JSON.stringify(stored));
+      } catch (e) {}
+
+      return await updateTask(taskId, {
+        is_completed: false,
+        status: 'to_do',
+        status_id: todoStatus?.id,
+        manager_approved: false,
+        sub_manager_approved: false,
+        manager_approved_by: null,
+        sub_manager_approved_by: null,
+        manager_approved_at: null,
+        sub_manager_approved_at: null
+      });
+    }
+
     // Strict Business Logic Check (Only when marking AS DONE)
-    if (!targetTask.is_completed) {
-      const acks = targetTask.task_acknowledgements || [];
-      const hasMultipleAssignees = Array.isArray(targetTask.assigned_users) && targetTask.assigned_users.length > 1;
-      const isTeam = targetTask.task_type === 'team' || acks.length > 0 || hasMultipleAssignees;
+    const acks = targetTask.task_acknowledgements || [];
+    const hasMultipleAssignees = Array.isArray(targetTask.assigned_users) && targetTask.assigned_users.length > 1;
+    const isTeam = targetTask.task_type === 'team' || acks.length > 0 || hasMultipleAssignees;
 
-      if (isTeam) {
-        const pendingMembers = acks.filter(a => !a.is_acknowledged);
-        if (pendingMembers.length > 0) {
-          const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
-          toast.error(`🔒 Cannot complete task! ${pendingMembers.length} assigned member(s) still working: ${names}. All assigned members must mark their part done first.`, {
-            id: `task-locked-${taskId}`,
-            duration: 6000
-          });
-          return false;
-        }
+    if (isTeam) {
+      const pendingMembers = acks.filter(a => !a.is_acknowledged);
+      if (pendingMembers.length > 0) {
+        const names = pendingMembers.map(a => a.full_name || 'Team Member').join(', ');
+        toast.error(`🔒 Cannot complete task! ${pendingMembers.length} assigned member(s) still working: ${names}. All assigned members must mark their part done first.`, {
+          id: `task-locked-${taskId}`,
+          duration: 6000
+        });
+        return false;
       }
+    }
 
-      // ── ADVANCED RECURRING TASK ROLLOVER (RRULE) ──
+    const isUnderReview = targetTask.status === 'under_review' || 
+      dropdownStatuses.find(st => st.id === targetTask.status_id)?.name?.toLowerCase() === 'in review';
+
+    // If task is under review
+    if (isUnderReview) {
+      if (!isManagerOrSub) {
+        toast('Pending Dual Approval — Both Manager and Sub-Manager must approve.', {
+          id: `task-review-${taskId}`,
+          icon: '🔒'
+        });
+        return false;
+      }
+      return await approveTask(taskId);
+    }
+
+    // If task is currently active (To Do / In Progress):
+    // Regular Member: submits for review
+    if (!isManagerOrSub) {
+      const reviewStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('review')) || dropdownStatuses[2];
+      toast.success(`📤 Task submitted for Manager & Sub-Manager Approval!`, {
+        id: `task-submitted-${taskId}`,
+        duration: 3500
+      });
+      return await updateTask(taskId, {
+        status: 'under_review',
+        status_id: reviewStatus?.id,
+        is_completed: false,
+        manager_approved: false,
+        sub_manager_approved: false
+      });
+    }
+
+    // If Manager or Sub-Manager clicks completion on an active task:
+    // They cannot unilaterally complete it! They grant their approval and submit to review!
+    return await approveTask(taskId);
+  };
+
+  const approveTask = async (taskId, roleOverride = null) => {
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return false;
+
+    const userRole = profile?.role || 'member';
+    const isManagerRole = ['manager', 'admin'].includes(userRole);
+    const isSubManagerRole = ['sub_manager', 'deputy_manager'].includes(userRole);
+    const isAdmin = userRole === 'admin';
+
+    // Determine which approval this user is granting
+    let actingRole = roleOverride;
+    if (!actingRole) {
+      if (isAdmin) {
+        if (!targetTask.manager_approved) actingRole = 'manager';
+        else if (!targetTask.sub_manager_approved) actingRole = 'sub_manager';
+        else actingRole = 'manager';
+      } else if (isManagerRole) {
+        actingRole = 'manager';
+      } else if (isSubManagerRole) {
+        actingRole = 'sub_manager';
+      }
+    }
+
+    if (!actingRole || (!isManagerRole && !isSubManagerRole && !isAdmin)) {
+      toast.error('🔒 Only Managers and Sub-Managers can approve tasks.', { id: `ack-perm-${taskId}` });
+      return false;
+    }
+
+    if (actingRole === 'manager' && !isManagerRole && !isAdmin) {
+      toast.error('🔒 Only a Manager can grant Manager Approval.');
+      return false;
+    }
+
+    if (actingRole === 'sub_manager' && !isSubManagerRole && !isAdmin) {
+      toast.error('🔒 Only a Sub-Manager can grant Sub-Manager Approval.');
+      return false;
+    }
+
+    if (actingRole === 'manager' && targetTask.manager_approved) {
+      toast('Manager has already approved this task. Awaiting Sub-Manager approval.', {
+        icon: '⏳',
+        id: `mgr-already-${taskId}`,
+        duration: 3500
+      });
+      return false;
+    }
+
+    if (actingRole === 'sub_manager' && targetTask.sub_manager_approved) {
+      toast('Sub-Manager has already approved this task. Awaiting Manager approval.', {
+        icon: '⏳',
+        id: `sub-already-${taskId}`,
+        duration: 3500
+      });
+      return false;
+    }
+
+    const newManagerApproved = actingRole === 'manager' ? true : Boolean(targetTask.manager_approved);
+    const newSubManagerApproved = actingRole === 'sub_manager' ? true : Boolean(targetTask.sub_manager_approved);
+    const isBothApproved = newManagerApproved && newSubManagerApproved;
+
+    // Save to localStorage dual approvals fallback
+    try {
+      const existingLocal = JSON.parse(localStorage.getItem('tasker_dual_approvals') || '{}');
+      existingLocal[taskId] = {
+        manager_approved: newManagerApproved,
+        sub_manager_approved: newSubManagerApproved,
+        manager_approved_by: actingRole === 'manager' ? currentUserId : targetTask.manager_approved_by,
+        sub_manager_approved_by: actingRole === 'sub_manager' ? currentUserId : targetTask.sub_manager_approved_by,
+        manager_approved_at: actingRole === 'manager' ? new Date().toISOString() : targetTask.manager_approved_at,
+        sub_manager_approved_at: actingRole === 'sub_manager' ? new Date().toISOString() : targetTask.sub_manager_approved_at,
+      };
+      localStorage.setItem('tasker_dual_approvals', JSON.stringify(existingLocal));
+    } catch (e) {}
+
+    if (isBothApproved) {
+      // Both Manager and Sub-Manager have approved! Task is completed!
+      // Handle recurring rollover if applicable
       if (targetTask.recurrence_rule) {
         const nextOccurrence = getNextOccurrence(targetTask.recurrence_rule, targetTask.due_date, new Date());
         if (nextOccurrence) {
           const formattedNext = format(nextOccurrence, 'MMM d, yyyy');
-          toast.success(`🔁 Completed instance! Next occurrence: ${formattedNext}`, {
+          toast.success(`🎉 Fully Approved by Both! Next occurrence: ${formattedNext}`, {
             id: `task-repeat-${taskId}`,
-            duration: 3500
+            duration: 4000
           });
 
-          // Rollover: update due_date to the next occurrence, keep is_completed = false
+          let newNextReminderAt = null;
+          if (targetTask.reminder_offset_days !== null && targetTask.reminder_offset_days !== undefined) {
+            newNextReminderAt = calculateNextReminderAt(
+              nextOccurrence.toISOString(),
+              targetTask.reminder_offset_days,
+              targetTask.reminder_time || '09:00:00'
+            );
+          }
+
           return await updateTask(taskId, {
             due_date: nextOccurrence.toISOString(),
-            is_completed: false
+            is_completed: false,
+            status: 'to_do',
+            manager_approved: false,
+            sub_manager_approved: false,
+            manager_approved_by: null,
+            sub_manager_approved_by: null,
+            next_reminder_at: newNextReminderAt,
+            is_reminder_sent: false
           });
         }
       }
-    }
 
-    const nextCompleted = !targetTask.is_completed;
-    if (nextCompleted) {
-      toast.success(`✅ Task Completed: "${targetTask.title}"`, {
-        id: `task-complete-${taskId}`,
-        duration: 2500,
+      const completedStatus = dropdownStatuses.find(st => st.is_completed_state || st.name.toLowerCase().includes('complete')) || dropdownStatuses[3];
+      toast.success(`🎉 Task Fully Approved & Completed! (Manager & Sub-Manager approved)`, {
+        id: `task-both-approved-${taskId}`,
+        duration: 4000
+      });
+
+      return await updateTask(taskId, {
+        status: 'completed',
+        status_id: completedStatus?.id,
+        is_completed: true,
+        manager_approved: true,
+        sub_manager_approved: true,
+        manager_approved_by: actingRole === 'manager' ? currentUserId : targetTask.manager_approved_by,
+        sub_manager_approved_by: actingRole === 'sub_manager' ? currentUserId : targetTask.sub_manager_approved_by,
+        manager_approved_at: actingRole === 'manager' ? new Date().toISOString() : targetTask.manager_approved_at,
+        sub_manager_approved_at: actingRole === 'sub_manager' ? new Date().toISOString() : targetTask.sub_manager_approved_at
       });
     } else {
-      toast(`Task marked active: "${targetTask.title}"`, {
-        id: `task-complete-${taskId}`,
-        duration: 2000,
+      // Only one has approved so far! Stays under review!
+      const roleLabel = actingRole === 'manager' ? 'Manager' : 'Sub-Manager';
+      const neededRole = actingRole === 'manager' ? 'Sub-Manager' : 'Manager';
+      const reviewStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('review')) || dropdownStatuses[2];
+
+      toast.success(`👍 ${roleLabel} Approved (1/2)! Awaiting ${neededRole} approval.`, {
+        id: `task-half-approved-${taskId}`,
+        duration: 4000
+      });
+
+      return await updateTask(taskId, {
+        status: 'under_review',
+        status_id: reviewStatus?.id,
+        is_completed: false,
+        manager_approved: newManagerApproved,
+        sub_manager_approved: newSubManagerApproved,
+        manager_approved_by: actingRole === 'manager' ? currentUserId : targetTask.manager_approved_by,
+        sub_manager_approved_by: actingRole === 'sub_manager' ? currentUserId : targetTask.sub_manager_approved_by,
+        manager_approved_at: actingRole === 'manager' ? new Date().toISOString() : targetTask.manager_approved_at,
+        sub_manager_approved_at: actingRole === 'sub_manager' ? new Date().toISOString() : targetTask.sub_manager_approved_at
       });
     }
+  };
 
-    return await updateTask(taskId, { is_completed: nextCompleted });
+  const rejectTask = async (taskId) => {
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return false;
+    const todoStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('to do')) || dropdownStatuses[0];
+
+    const userRole = profile?.role || 'member';
+    const actingRole = ['manager', 'admin'].includes(userRole) ? 'Manager' : 'Sub-Manager';
+
+    // Clear localStorage dual approvals
+    try {
+      const existingLocal = JSON.parse(localStorage.getItem('tasker_dual_approvals') || '{}');
+      delete existingLocal[taskId];
+      localStorage.setItem('tasker_dual_approvals', JSON.stringify(existingLocal));
+    } catch (e) {}
+
+    toast.error(`❌ Task Rejected by ${actingRole}: "${targetTask.title}" returned to To Do`, {
+      id: `task-reject-${taskId}`,
+      duration: 3500
+    });
+
+    return await updateTask(taskId, {
+      status: 'to_do',
+      status_id: todoStatus?.id,
+      is_completed: false,
+      manager_approved: false,
+      sub_manager_approved: false,
+      manager_approved_by: null,
+      sub_manager_approved_by: null,
+      manager_approved_at: null,
+      sub_manager_approved_at: null
+    });
   };
 
   const deleteTask = async (taskId) => {
@@ -1352,7 +1729,7 @@ export const TaskProvider = ({ children }) => {
   const deleteList = async (listId) => {
     if (isDemoMode || !isSupabaseConfigured()) {
       setLists(prev => prev.filter(l => l.id !== listId));
-      if (selectedListId === listId) setSelectedListId('list-inbox');
+      if (selectedListId === listId) setSelectedListId('list-all');
       toast.success('List deleted');
       return;
     }
@@ -1360,7 +1737,7 @@ export const TaskProvider = ({ children }) => {
       const { error } = await supabase.from('lists').delete().eq('id', listId);
       if (error) throw error;
       setLists(prev => prev.filter(l => l.id !== listId));
-      if (selectedListId === listId) setSelectedListId('list-inbox');
+      if (selectedListId === listId) setSelectedListId('list-all');
       toast.success('List deleted');
     } catch (err) {
       toast.error('Error deleting list: ' + err.message);
@@ -1696,11 +2073,23 @@ export const TaskProvider = ({ children }) => {
   const rbacTasks = tasks; // Total transparency: everyone sees everything
 
   const filteredTasks = rbacTasks.filter(t => {
-    if (selectedListId === 'list-inbox') return true;
+    // 1. "All" Smart View (or legacy list-inbox): Show all tasks across all folders and lists
+    if (selectedListId === 'list-all' || selectedListId === 'list-inbox') {
+      return true;
+    }
+
+    // 2. "Today" Smart View: Incomplete tasks where due_date <= today (Today + Overdue)
     if (selectedListId === 'list-today') {
       if (!t.due_date) return false;
-      try { return isToday(parseISO(t.due_date)); } catch { return false; }
+      try {
+        const d = parseISO(t.due_date);
+        return isToday(d) || isPast(d);
+      } catch {
+        return false;
+      }
     }
+
+    // 3. "Next 7 Days" Smart View
     if (selectedListId === 'list-next7') {
       if (!t.due_date) return false;
       try {
@@ -1708,8 +2097,20 @@ export const TaskProvider = ({ children }) => {
         const today = startOfDay(new Date());
         const nextWeek = endOfDay(addDays(today, 7));
         return isWithinInterval(date, { start: today, end: nextWeek });
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     }
+
+    // 4. "Assigned to me" Smart View: Tasks assigned to current authenticated user
+    if (selectedListId === 'list-assigned-me') {
+      const assignedUsers = Array.isArray(t.assigned_users) ? t.assigned_users : [];
+      const myId = user?.id || currentUserId;
+      return assignedUsers.includes(myId) || 
+             t.assigned_to === myId ||
+             (profile?.id && (assignedUsers.includes(profile.id) || t.assigned_to === profile.id));
+    }
+
     return t.list_id === selectedListId;
   });
 
@@ -1745,6 +2146,8 @@ export const TaskProvider = ({ children }) => {
       addTask,
       updateTask,
       toggleTaskCompletion,
+      approveTask,
+      rejectTask,
       deleteTask,
       toggleAcknowledgement,
       addSubtask,

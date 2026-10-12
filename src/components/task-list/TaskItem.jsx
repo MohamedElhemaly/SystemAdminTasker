@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
-import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check, Lock, RotateCw, BellRing } from 'lucide-react';
+import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check, Lock, RotateCw, BellRing, X } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
 import { getAvatarUrl } from '../../lib/avatars';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -12,6 +12,8 @@ export const TaskItem = ({ task }) => {
     selectedTaskId, 
     setSelectedTaskId, 
     toggleTaskCompletion, 
+    approveTask,
+    rejectTask,
     updateTask, 
     toggleAcknowledgement,
     dropdownPriorities,
@@ -26,6 +28,18 @@ export const TaskItem = ({ task }) => {
   const isSelected = selectedTaskId === task.id;
   const currentUserId = user?.id || 'demo-user-123';
   const currentUserRole = profile?.role || 'member';
+  const isManagerRole = ['manager', 'admin'].includes(currentUserRole);
+  const isSubManagerRole = ['sub_manager', 'deputy_manager'].includes(currentUserRole);
+  const isAdmin = currentUserRole === 'admin';
+  const isManagerOrSub = isManagerRole || isSubManagerRole || isAdmin;
+  const isMember = currentUserRole === 'member';
+
+  const isUnderReview = task.status === 'under_review' || 
+    dropdownStatuses.find(st => st.id === task.status_id)?.name?.toLowerCase() === 'in review';
+
+  const managerApproved = Boolean(task.manager_approved);
+  const subManagerApproved = Boolean(task.sub_manager_approved);
+  const approvalCount = (managerApproved ? 1 : 0) + (subManagerApproved ? 1 : 0);
 
   const assignedUserIds = Array.isArray(task.assigned_users) && task.assigned_users.length > 0
     ? task.assigned_users
@@ -135,38 +149,53 @@ export const TaskItem = ({ task }) => {
           : 'bg-white dark:bg-[#1f2026] border-slate-200/90 dark:border-slate-800/80 hover:bg-slate-50/90 dark:hover:bg-[#25262e] hover:border-slate-300 dark:hover:border-slate-700/60 shadow-xs'
       } ${task.is_completed ? 'opacity-65' : ''}`}
     >
-      {/* Custom Circular Tick Checkbox (With Lock Safeguard) */}
+      {/* Custom Circular Tick Checkbox (With Lock Safeguard & Dual Approval Lock) */}
       <div className="pt-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={() => toggleTaskCompletion(task.id)}
-          className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${
-            task.is_completed
-              ? 'bg-blue-600 border-blue-600 text-white'
-              : isLocked
-                ? 'border-amber-400 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/50 hover:border-amber-500'
-                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1b1c20] hover:border-blue-500 dark:hover:border-blue-400'
-          }`}
-          title={
-            task.is_completed 
-              ? 'Mark incomplete' 
-              : isLocked 
-                ? `🔒 Locked: ${workingMembers.length} team member(s) still working (${workingMembers.map(m => m.full_name).join(', ')})` 
-                : 'Toggle Task Completion'
-          }
-        >
-          {task.is_completed ? (
-            <Check className="w-3 h-3 stroke-[3]" />
-          ) : isLocked ? (
-            <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
-          ) : null}
-        </button>
+        {isUnderReview && isMember ? (
+          <div 
+            className="w-4.5 h-4.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 flex items-center justify-center border border-purple-300 dark:border-purple-600/50" 
+            title={`Pending Dual Approval (${approvalCount}/2 Approved) — Cannot be modified while under review`}
+          >
+            <Lock className="w-2.5 h-2.5" />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => toggleTaskCompletion(task.id)}
+            className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${
+              task.is_completed
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : isUnderReview
+                  ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-600 hover:border-purple-600'
+                  : isLocked
+                    ? 'border-amber-400 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/50 hover:border-amber-500'
+                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1b1c20] hover:border-blue-500 dark:hover:border-blue-400'
+            }`}
+            title={
+              task.is_completed 
+                ? 'Mark incomplete' 
+                : isUnderReview
+                  ? `Dual Approval (${approvalCount}/2 Approved) — Click to review`
+                  : isLocked 
+                    ? `🔒 Locked: ${workingMembers.length} team member(s) still working (${workingMembers.map(m => m.full_name).join(', ')})` 
+                    : 'Toggle Task Completion'
+            }
+          >
+            {task.is_completed ? (
+              <Check className="w-3 h-3 stroke-[3]" />
+            ) : isUnderReview ? (
+              <Clock className="w-2.5 h-2.5 text-purple-600 dark:text-purple-400" />
+            ) : isLocked ? (
+              <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+            ) : null}
+          </button>
+        )}
       </div>
 
       {/* Task Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          {isEditing ? (
+          {isEditing && !isMember ? (
             <form onSubmit={handleTitleSubmit} className="flex-1" onClick={(e) => e.stopPropagation()}>
               <input
                 type="text"
@@ -179,7 +208,7 @@ export const TaskItem = ({ task }) => {
             </form>
           ) : (
             <span
-              onDoubleClick={() => setIsEditing(true)}
+              onDoubleClick={() => !isMember && setIsEditing(true)}
               className={`text-sm font-semibold text-slate-800 dark:text-slate-100 truncate ${
                 task.is_completed ? 'line-through text-slate-400 dark:text-slate-500 font-normal' : ''
               }`}
@@ -204,8 +233,70 @@ export const TaskItem = ({ task }) => {
         {/* Details & Custom Team Acknowledgements Bar */}
         <div className="flex flex-wrap items-center gap-2 mt-2">
           
-          {/* Dynamic Status Badge */}
-          {statusInfo && (
+          {/* Dynamic Status Badge or Approval Actions */}
+          {isUnderReview ? (
+            <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40 shadow-xs">
+                <Clock className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                <span>Dual Approval: {approvalCount}/2</span>
+              </span>
+
+              {/* Manager Status / Action */}
+              {managerApproved ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30" title="Manager approved">
+                  <Check className="w-2.5 h-2.5 stroke-[3]" /> Mgr Approved
+                </span>
+              ) : (isManagerRole || isAdmin) ? (
+                <button
+                  type="button"
+                  onClick={() => approveTask(task.id, 'manager')}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                  title="Grant Manager approval"
+                >
+                  <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+                  <span>Approve Mgr</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Awaiting Manager approval">
+                  ⏳ Mgr Pending
+                </span>
+              )}
+
+              {/* Sub-Manager Status / Action */}
+              {subManagerApproved ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30" title="Sub-Manager approved">
+                  <Check className="w-2.5 h-2.5 stroke-[3]" /> Sub-Mgr Approved
+                </span>
+              ) : (isSubManagerRole || isAdmin) ? (
+                <button
+                  type="button"
+                  onClick={() => approveTask(task.id, 'sub_manager')}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                  title="Grant Sub-Manager approval"
+                >
+                  <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+                  <span>Approve Sub-Mgr</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Awaiting Sub-Manager approval">
+                  ⏳ Sub-Mgr Pending
+                </span>
+              )}
+
+              {/* Reject Button (Managers / Sub-Managers / Admins) */}
+              {isManagerOrSub && (
+                <button
+                  type="button"
+                  onClick={() => rejectTask(task.id)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 dark:text-rose-300 dark:border-rose-500/40 shadow-xs transition-all active:scale-95 cursor-pointer"
+                  title="Reject task (Return to To Do)"
+                >
+                  <X className="w-2.5 h-2.5 stroke-[2.5]" />
+                  <span>Reject</span>
+                </button>
+              )}
+            </div>
+          ) : statusInfo ? (
             <span 
               className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border" 
               style={{
@@ -216,7 +307,7 @@ export const TaskItem = ({ task }) => {
             >
               <span>{statusInfo.name}</span>
             </span>
-          )}
+          ) : null}
 
           {/* Dynamic Task Type Badge */}
           {taskTypeInfo && (

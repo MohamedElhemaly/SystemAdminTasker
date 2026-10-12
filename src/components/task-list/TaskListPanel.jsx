@@ -9,7 +9,7 @@ import { ViewOptionsMenu } from './ViewOptionsMenu';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Search, 
   Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, CalendarRange, X,
-  Layers, Flag
+  Layers, Flag, UserCheck
 } from 'lucide-react';
 import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 
@@ -33,7 +33,10 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
   const [endDate, setEndDate] = useState('');
   const [dateField, setDateField] = useState('due_date'); // 'due_date' | 'created_at'
 
-  const currentList = lists.find(l => l.id === selectedListId) || lists[0];
+  const currentList = lists.find(l => l.id === selectedListId) || 
+    (selectedListId === 'list-inbox' ? lists.find(l => l.id === 'list-all') : null) || 
+    lists[0] || 
+    { id: 'list-all', name: 'All' };
 
   // Filter tasks by smart search query
   const parsedSearch = parseSearchQuery(searchQuery);
@@ -164,6 +167,47 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
 
   // Group sorted uncompleted tasks according to groupBy ('date' | 'priority' | 'list' | 'none')
   const taskGroups = useMemo(() => {
+    // 1. Dedicated Today Smart View: Consolidate Overdue inside Today view (split into OVERDUE & TODAY)
+    if (selectedListId === 'list-today') {
+      const overdue = [];
+      const today = [];
+
+      sortedUncompletedTasks.forEach(t => {
+        if (!t.due_date) return;
+        try {
+          const d = parseISO(t.due_date);
+          if (isToday(d)) {
+            today.push(t);
+          } else if (isPast(d)) {
+            overdue.push(t);
+          }
+        } catch {
+          // ignore invalid date
+        }
+      });
+
+      const groups = [];
+      if (overdue.length > 0) {
+        groups.push({
+          id: 'date-overdue',
+          title: 'OVERDUE',
+          icon: AlertCircle,
+          colorClass: 'text-red-600 dark:text-red-500 font-extrabold',
+          tasks: overdue
+        });
+      }
+      if (today.length > 0) {
+        groups.push({
+          id: 'date-today',
+          title: 'TODAY',
+          icon: Calendar,
+          colorClass: 'text-emerald-600 dark:text-emerald-400 font-extrabold',
+          tasks: today
+        });
+      }
+      return groups;
+    }
+
     if (groupBy === 'none') {
       return [
         {
@@ -289,18 +333,18 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
     if (overdue.length > 0) {
       dateGroups.push({
         id: 'date-overdue',
-        title: 'Overdue',
+        title: 'OVERDUE',
         icon: AlertCircle,
-        colorClass: 'text-red-600 dark:text-red-400',
+        colorClass: 'text-red-600 dark:text-red-500 font-extrabold',
         tasks: overdue
       });
     }
     if (today.length > 0) {
       dateGroups.push({
         id: 'date-today',
-        title: 'Today',
+        title: 'TODAY',
         icon: Calendar,
-        colorClass: 'text-emerald-700 dark:text-emerald-400',
+        colorClass: 'text-emerald-600 dark:text-emerald-400 font-extrabold',
         tasks: today
       });
     }
@@ -333,7 +377,7 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
     }
 
     return dateGroups;
-  }, [groupBy, sortedUncompletedTasks, dropdownPriorities, lists]);
+  }, [groupBy, sortedUncompletedTasks, dropdownPriorities, lists, selectedListId]);
 
   return (
     <div className="flex-1 h-screen bg-slate-50/60 dark:bg-[#18181c] text-slate-900 dark:text-slate-100 flex flex-col min-w-0 border-r border-slate-200 dark:border-slate-800">
@@ -347,8 +391,12 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
             <Calendar className="w-6 h-6 text-emerald-500 dark:text-emerald-400 shrink-0" />
           ) : currentList.id === 'list-next7' ? (
             <CalendarDays className="w-6 h-6 text-purple-500 dark:text-purple-400 shrink-0" />
+          ) : currentList.id === 'list-assigned-me' ? (
+            <UserCheck className="w-6 h-6 text-amber-500 dark:text-amber-400 shrink-0" />
+          ) : currentList.id === 'list-all' || currentList.id === 'list-inbox' ? (
+            <Layers className="w-6 h-6 text-blue-500 dark:text-blue-400 shrink-0" />
           ) : (
-            <Inbox className="w-6 h-6 text-blue-500 dark:text-blue-400 shrink-0" />
+            <Folder className="w-6 h-6 text-blue-500 dark:text-blue-400 shrink-0" />
           )}
 
           <div>

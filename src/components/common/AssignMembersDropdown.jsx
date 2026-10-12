@@ -8,7 +8,8 @@ export const AssignMembersDropdown = ({
   onChange,
   allUsers = [],
   buttonClassName = '',
-  align = 'left'
+  align = 'left',
+  disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,8 +83,11 @@ export const AssignMembersDropdown = ({
       {/* ── Trigger Button ── */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-xs ${
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
+          disabled ? 'opacity-60 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
+        } ${
           isTeam && selectedUserIds.length === 0
             ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/50 font-bold animate-pulse'
             : selectedUserIds.length > 0

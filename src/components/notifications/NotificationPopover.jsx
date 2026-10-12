@@ -56,7 +56,7 @@ export const NotificationPopover = ({ isOpen, onClose, setActiveView }) => {
       if (target?.list_id && setSelectedListId) {
         setSelectedListId(target.list_id);
       } else if (setSelectedListId) {
-        setSelectedListId('list-inbox');
+        setSelectedListId('list-all');
       }
       setSelectedTaskId(notif.entity_id);
       if (setActiveView) setActiveView('tasks');
@@ -228,7 +228,11 @@ export const NotificationPopover = ({ isOpen, onClose, setActiveView }) => {
                 >
                   {/* Left Avatar */}
                   <div className="shrink-0 mt-0.5">
-                    {isTickTickSystem ? (
+                    {notif.type === 'task_reminder' ? (
+                      <div className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-xs">
+                        <Bell className="w-4 h-4 fill-amber-500/20" />
+                      </div>
+                    ) : isTickTickSystem ? (
                       <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center p-1.5 shadow-xs border border-slate-200 dark:border-white/20">
                         <div className="w-full h-full rounded-full border-2 border-amber-400 border-t-blue-500 flex items-center justify-center">
                           <Check className="w-3.5 h-3.5 text-blue-500 stroke-[3]" />
@@ -333,6 +337,14 @@ export const NotificationPopover = ({ isOpen, onClose, setActiveView }) => {
                         <span>
                           {notif.message_data?.custom_text || 'You\'ve joined a shared list.'}
                         </span>
+                      ) : notif.type === 'task_reminder' ? (
+                        <div>
+                          <span className="font-semibold text-amber-600 dark:text-amber-400">⏰ Task Reminder: </span>
+                          <span className="text-blue-600 dark:text-[#4e82f7] font-semibold hover:underline">
+                            '{notif.message_data?.task_title || 'Task'}'
+                          </span>
+                          <span className="text-slate-500 dark:text-slate-400"> is due {notif.message_data?.due_text || 'soon'}.</span>
+                        </div>
                       ) : (
                         <span>
                           {notif.message_data?.custom_text || notif.message_data?.task_title || 'New activity notification.'}
