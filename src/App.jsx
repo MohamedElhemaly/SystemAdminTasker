@@ -17,6 +17,7 @@ import { CreateListModal } from './components/sidebar/CreateListModal';
 import { CreateTeamModal } from './components/sidebar/CreateTeamModal';
 import { MobileBottomNav } from './components/common/MobileBottomNav';
 import { ClickFeedbackProvider } from './components/common/ClickFeedback';
+import { StickyNoteWidget } from './components/common/StickyNoteWidget';
 import toast, { Toaster, ToastBar, useToasterStore } from 'react-hot-toast';
 
 // ─────────────────────────────────────────────────
@@ -129,6 +130,9 @@ const DashboardLayout = () => {
         }} 
         teamToEdit={teamToEdit} 
       />
+
+      {/* Floating Sticky Note Scratchpad Widget */}
+      <StickyNoteWidget />
     </div>
   );
 };

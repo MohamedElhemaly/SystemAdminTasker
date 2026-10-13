@@ -9,7 +9,7 @@ import { ViewOptionsMenu } from './ViewOptionsMenu';
 import { 
   Inbox, Calendar, CalendarDays, Folder, Users, Search, 
   Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, RefreshCw, CalendarRange, X,
-  Layers, Flag, UserCheck
+  Layers, Flag, UserCheck, Activity
 } from 'lucide-react';
 import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 
@@ -35,6 +35,7 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
 
   const currentList = lists.find(l => l.id === selectedListId) || 
     (selectedListId === 'list-inbox' ? lists.find(l => l.id === 'list-all') : null) || 
+    (selectedListId === 'list-working-on' ? { id: 'list-working-on', name: 'Currently Working On' } : null) ||
     lists[0] || 
     { id: 'list-all', name: 'All' };
 
@@ -387,6 +388,8 @@ export const TaskListPanel = ({ onOpenCreateList, onOpenCreateTeam }) => {
         <div className="flex items-center gap-3 min-w-0">
           {currentList.team_id ? (
             <Users className="w-6 h-6 text-pink-500 dark:text-pink-400 shrink-0" />
+          ) : currentList.id === 'list-working-on' ? (
+            <Activity className="w-6 h-6 text-amber-500 dark:text-amber-400 shrink-0 animate-pulse" />
           ) : currentList.id === 'list-today' ? (
             <Calendar className="w-6 h-6 text-emerald-500 dark:text-emerald-400 shrink-0" />
           ) : currentList.id === 'list-next7' ? (

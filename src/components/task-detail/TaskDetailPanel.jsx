@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
-import { SubtasksList } from './SubtasksList';
+import { TaskChecklist } from './TaskChecklist';
 import { TeamAcknowledgementSection } from './TeamAcknowledgementSection';
 import { TaskAttachmentsSection } from './TaskAttachmentsSection';
 import ReactMarkdown from 'react-markdown';
@@ -16,6 +16,7 @@ import { ModernDropdown } from '../common/ModernDropdown';
 import { RepeatDropdown } from '../common/RepeatDropdown';
 import { ReminderDropdown } from '../common/ReminderDropdown';
 import { AssignMembersDropdown } from '../common/AssignMembersDropdown';
+import { TaskTimeTracker } from '../common/TaskTimeTracker';
 import { getAvatarUrl } from '../../lib/avatars';
 
 export const TaskDetailPanel = () => {
@@ -26,6 +27,7 @@ export const TaskDetailPanel = () => {
     deleteTask, 
     approveTask,
     rejectTask,
+    isTaskAssignedToManagement,
     lists, 
     allUsers,
     dropdownPriorities,
@@ -35,7 +37,7 @@ export const TaskDetailPanel = () => {
     addTagToTask,
     removeTagFromTask
   } = useTasks();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -66,8 +68,21 @@ export const TaskDetailPanel = () => {
   const isManagerOrSub = isManagerRole || isSubManagerRole || isAdmin;
   const isMember = currentRole === 'member';
 
-  const isUnderReview = selectedTask.status === 'under_review' || 
-    dropdownStatuses.find(st => st.id === selectedTask.status_id)?.name?.toLowerCase() === 'in review';
+  const assignedUserIds = Array.isArray(selectedTask.assigned_users) && selectedTask.assigned_users.length > 0
+    ? selectedTask.assigned_users
+    : (selectedTask.assigned_to ? [selectedTask.assigned_to] : []);
+  
+  const assignedUsers = assignedUserIds.map(uid => allUsers?.find(u => u.id === uid)).filter(Boolean);
+
+  // If assigned to a manager or sub-manager, NO APPROVAL NEEDED!
+  const isAssignedToManagement = isTaskAssignedToManagement 
+    ? isTaskAssignedToManagement(selectedTask) 
+    : assignedUsers.some(u => ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(u.role));
+
+  const isUnderReview = !isAssignedToManagement && (
+    selectedTask.status === 'under_review' || 
+    dropdownStatuses.find(st => st.id === selectedTask.status_id)?.name?.toLowerCase() === 'in review'
+  );
 
   const managerApproved = Boolean(selectedTask.manager_approved);
   const subManagerApproved = Boolean(selectedTask.sub_manager_approved);
@@ -375,6 +390,9 @@ export const TaskDetailPanel = () => {
           </div>
         </div>
 
+        {/* Advanced Time Tracking (Play/Pause & Stopwatch Display) */}
+        <TaskTimeTracker task={selectedTask} isDetailView={true} />
+
         {/* Eisenhower Matrix Quadrant Selector */}
         <div className="p-3 bg-slate-50 dark:bg-[#1a1b20] border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
           <div className="flex items-center justify-between">
@@ -542,8 +560,8 @@ export const TaskDetailPanel = () => {
           )}
         </div>
 
-        {/* Sub-tasks Checklist Section */}
-        <SubtasksList task={selectedTask} />
+        {/* Sub-tasks / Checklist Section (TickTick Style) */}
+        <TaskChecklist task={selectedTask} />
 
         {/* Excel Task Attachments Section */}
         <TaskAttachmentsSection task={selectedTask} />

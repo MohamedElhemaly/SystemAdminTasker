@@ -5,13 +5,15 @@ import { getAvatarUrl } from '../../lib/avatars';
 import { 
   Inbox, Layers, Calendar, CalendarDays, Folder, Users, Plus, ChevronLeft, 
   ChevronRight, LogOut, User, UserCheck, Sparkles, Shield, GitFork, Settings, 
-  CheckSquare, ShieldAlert, MonitorDown, Bell, LayoutGrid 
+  CheckSquare, ShieldAlert, MonitorDown, Bell, LayoutGrid, Activity, StickyNote
 } from 'lucide-react';
 import { isToday, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { SoundToggle } from '../common/SoundToggle';
 import { useNotifications } from '../../context/NotificationContext';
 import { NotificationPopover } from '../notifications/NotificationPopover';
+import { UserStatusDropdown } from '../common/UserStatusDropdown';
+import { useNotesStore } from '../../context/useNotesStore';
 
 export const Sidebar = ({ 
   isCollapsed, 
@@ -25,9 +27,10 @@ export const Sidebar = ({
   onInstallPWA
 }) => {
   const { user, profile, isDemoMode, signOut } = useAuth();
-  const { lists = [], teams = [], allTasks = [], selectedListId, setSelectedListId } = useTasks();
+  const { lists = [], teams = [], allTasks = [], selectedListId, setSelectedListId, dropdownStatuses = [], timeLogs = [] } = useTasks();
   const { unreadCount = 0 } = useNotifications();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const { toggleOpen: toggleNotes, isOpen: isNotesOpen, notes: stickyNotes = [] } = useNotesStore();
 
   // Compute Task Counts for Smart Lists with safe fallback handling
   const countAll = (allTasks || []).filter(t => !t?.is_completed).length;
@@ -58,6 +61,17 @@ export const Sidebar = ({
     return assignedList.includes(myId) || t?.assigned_to === myId;
   }).length;
 
+  const countWorkingOn = (allTasks || []).filter(t => {
+    if (t?.is_completed) return false;
+    const inProgStatusId = dropdownStatuses?.find(s => s.name?.toLowerCase().includes('progress'))?.id;
+    return (
+      t.status === 'in_progress' ||
+      t.status === 'working' ||
+      (inProgStatusId && t.status_id === inProgStatusId) ||
+      timeLogs?.some(l => l.task_id === t.id && !l.end_time)
+    );
+  }).length;
+
   const getListTaskCount = (listId) => {
     return (allTasks || []).filter(t => t?.list_id === listId && !t?.is_completed).length;
   };
@@ -74,22 +88,26 @@ export const Sidebar = ({
       {/* 1. Header & User Profile */}
       <div className={`p-3 border-b border-slate-200 dark:border-slate-800/80 flex ${isCollapsed ? 'flex-col gap-3 justify-center items-center' : 'items-center justify-between'}`}>
         {!isCollapsed ? (
-          <div 
-            onClick={onOpenProfile}
-            className="flex items-center gap-2.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-            title="Click to open Profile Settings & Built-in Avatar"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 p-0.5 shadow-sm shrink-0">
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <div 
+              onClick={onOpenProfile}
+              className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 p-0.5 shadow-sm shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
+              title="Click to open Profile Settings & Built-in Avatar"
+            >
               <img src={avatarSrc} alt="Avatar" className="w-full h-full rounded-full object-cover bg-slate-200 dark:bg-slate-800" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1">
+              <div 
+                onClick={onOpenProfile}
+                className="flex items-center gap-1 cursor-pointer hover:opacity-85 transition-opacity"
+                title="Click to open Profile Settings"
+              >
                 <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                   {profile?.full_name || user?.email?.split('@')[0] || 'Ahmed Hassan'}
                 </span>
                 <Settings className="w-3 h-3 text-slate-400 shrink-0" />
               </div>
-              <div className="flex items-center gap-1 mt-0.5">
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded uppercase tracking-wider ${
                   userRole === 'manager'
                     ? 'bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30'
@@ -99,15 +117,24 @@ export const Sidebar = ({
                 }`}>
                   {userRole === 'manager' ? 'Manager (المراجع)' : userRole === 'sub_manager' || userRole === 'deputy_manager' ? 'Sub-Manager' : 'Member'}
                 </span>
+
+                {/* Real-time Work Presence Status Badge & Dropdown */}
+                <UserStatusDropdown />
               </div>
             </div>
           </div>
         ) : (
-          <div 
-            onClick={onOpenProfile}
-            className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center cursor-pointer p-0.5 border border-blue-500"
-          >
-            <img src={avatarSrc} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+          <div className="relative">
+            <div 
+              onClick={onOpenProfile}
+              className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center cursor-pointer p-0.5 border border-blue-500"
+              title="Click to open Profile Settings"
+            >
+              <img src={avatarSrc} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5">
+              <UserStatusDropdown compact />
+            </div>
           </div>
         )}
 
@@ -171,17 +198,17 @@ export const Sidebar = ({
             {!isCollapsed && <span className="truncate">Map</span>}
           </button>
 
-          {userRole === 'manager' && (
+          {(userRole === 'manager' || userRole === 'sub_manager' || userRole === 'deputy_manager' || userRole === 'admin') && (
             <button
               type="button"
               onClick={() => setActiveView('admin')}
               className={`col-span-2 py-1.5 px-2 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 activeView === 'admin' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-300/40 dark:hover:bg-slate-700/40'
               }`}
-              title="Super-Admin Dashboard (Manager ONLY)"
+              title="Admin Dashboard & Reports (Manager / Sub-Manager)"
             >
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-              {!isCollapsed && <span className="truncate">Admin</span>}
+              {!isCollapsed && <span className="truncate">Admin & Reports</span>}
             </button>
           )}
         </div>
@@ -211,6 +238,27 @@ export const Sidebar = ({
               {!isCollapsed && countAll > 0 && (
                 <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${(selectedListId === 'list-all' || selectedListId === 'list-inbox') && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}>
                   {countAll}
+                </span>
+              )}
+            </button>
+
+            {/* Currently Working On (In Progress) */}
+            <button
+              onClick={() => { setSelectedListId('list-working-on'); setActiveView('tasks'); }}
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                selectedListId === 'list-working-on' && activeView === 'tasks'
+                  ? 'bg-amber-600 text-white font-semibold shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-[#26272e] dark:hover:text-white'
+              }`}
+              title="Currently Working On (In Progress Tasks)"
+            >
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
+                <Activity className={`w-4 h-4 shrink-0 ${selectedListId === 'list-working-on' && activeView === 'tasks' ? 'text-white' : 'text-amber-500 dark:text-amber-400 animate-pulse'}`} />
+                {!isCollapsed && <span className="truncate">Currently Working On</span>}
+              </div>
+              {!isCollapsed && countWorkingOn > 0 && (
+                <span className={`px-2 py-0.5 text-[10px] rounded-full font-semibold ${selectedListId === 'list-working-on' && activeView === 'tasks' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                  {countWorkingOn}
                 </span>
               )}
             </button>
@@ -403,6 +451,29 @@ export const Sidebar = ({
             setActiveView={setActiveView}
           />
         </div>
+
+        {/* Private Sticky Notes / Personal Scratchpad Button */}
+        <button
+          type="button"
+          onClick={toggleNotes}
+          className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            isNotesOpen 
+              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30' 
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+          }`}
+          title="Private Sticky Notes (Personal Scratchpad)"
+        >
+          <div className="flex items-center gap-2">
+            <StickyNote className="w-4 h-4 shrink-0 text-amber-500" />
+            {!isCollapsed && <span>Sticky Notes</span>}
+          </div>
+
+          {!isCollapsed && stickyNotes.length > 0 && (
+            <span className="px-1.5 py-0.2 text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold rounded-full">
+              {stickyNotes.length}
+            </span>
+          )}
+        </button>
 
         <div className={`grid ${isCollapsed ? 'grid-cols-1' : 'grid-cols-2'} gap-1.5`}>
           <ThemeToggle isCollapsed={isCollapsed} />

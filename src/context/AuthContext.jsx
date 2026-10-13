@@ -182,7 +182,13 @@ export const AuthProvider = ({ children }) => {
           setUser(existingSession.user);
           setSession(existingSession);
           const profileData = await fetchProfile(existingSession.user.id);
-          if (profileData && isMounted) setProfile(profileData);
+          if (profileData && isMounted) {
+            const savedStatus = localStorage.getItem('tasker_work_status');
+            setProfile({
+              ...profileData,
+              work_status: profileData.work_status || savedStatus || 'ready'
+            });
+          }
         }
       } catch (err) {
         console.error('[AuthContext] getSession error:', err);
@@ -208,7 +214,13 @@ export const AuthProvider = ({ children }) => {
                 setIsDemoMode(false);
                 setAuthError(null);
                 const profileData = await fetchProfile(newSession.user.id);
-                if (profileData && isMounted) setProfile(profileData);
+                if (profileData && isMounted) {
+                  const savedStatus = localStorage.getItem('tasker_work_status');
+                  setProfile({
+                    ...profileData,
+                    work_status: profileData.work_status || savedStatus || 'ready'
+                  });
+                }
               }
             } else if (event === 'SIGNED_OUT') {
               nukeAllState();
@@ -217,7 +229,13 @@ export const AuthProvider = ({ children }) => {
                 setUser(newSession.user);
                 setSession(newSession);
                 const profileData = await fetchProfile(newSession.user.id);
-                if (profileData && isMounted) setProfile(profileData);
+                if (profileData && isMounted) {
+                  const savedStatus = localStorage.getItem('tasker_work_status');
+                  setProfile({
+                    ...profileData,
+                    work_status: profileData.work_status || savedStatus || 'ready'
+                  });
+                }
               }
             }
           } finally {
@@ -396,13 +414,18 @@ export const AuthProvider = ({ children }) => {
     // Persist to Supabase if configured
     if (isSupabaseConfigured() && !isDemoMode && user) {
       try {
+        const payload = {
+          full_name: newProfile.full_name,
+          avatar_id: newProfile.avatar_id,
+          updated_at: new Date().toISOString(),
+        };
+        if (newProfile.work_status !== undefined) {
+          payload.work_status = newProfile.work_status;
+        }
+
         const { error } = await supabase
           .from('profiles')
-          .update({
-            full_name: newProfile.full_name,
-            avatar_id: newProfile.avatar_id,
-            updated_at: new Date().toISOString(),
-          })
+          .update(payload)
           .eq('id', user.id); // RLS enforces: can only update own profile
         if (error) throw error;
       } catch (err) {
@@ -414,6 +437,39 @@ export const AuthProvider = ({ children }) => {
     }
 
     // Update localStorage for demo mode
+    if (isDemoMode) {
+      localStorage.setItem('tasker_local_user', JSON.stringify(newProfile));
+    }
+
+    return true;
+  };
+
+  // ─────────────────────────────────────────────────
+  const updateWorkStatus = async (status) => {
+    try {
+      localStorage.setItem('tasker_work_status', status);
+    } catch (e) {}
+
+    const newProfile = { ...profile, work_status: status };
+    setProfile(newProfile);
+
+    if (isSupabaseConfigured() && !isDemoMode && user) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            work_status: status,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+        if (error) {
+          console.warn('Could not persist work_status in Supabase:', error.message);
+        }
+      } catch (err) {
+        console.warn('work_status error:', err);
+      }
+    }
+
     if (isDemoMode) {
       localStorage.setItem('tasker_local_user', JSON.stringify(newProfile));
     }
@@ -448,6 +504,7 @@ export const AuthProvider = ({ children }) => {
       signOut,
       enableDemoMode,
       updateProfile,
+      updateWorkStatus,
       refreshProfile,
       registerLogoutHandler,
       

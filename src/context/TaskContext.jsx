@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured, createIsolatedClient } from '../lib/sup
 import { isToday, isTomorrow, isPast, isWithinInterval, addDays, startOfDay, endOfDay, parseISO, format } from 'date-fns';
 import { getNextOccurrence } from '../lib/rruleHelper';
 import { calculateNextReminderAt } from '../lib/reminderHelper';
+import { formatDurationCompact } from '../lib/timeTrackingHelper';
 import toast from 'react-hot-toast';
 
 const TaskContext = createContext({});
@@ -98,7 +99,7 @@ const getDeletedUserIds = () => {
 };
 
 export const TaskProvider = ({ children }) => {
-  const { user, profile, isDemoMode, registerLogoutHandler, isAuthenticated } = useAuth();
+  const { user, profile, isDemoMode, registerLogoutHandler, isAuthenticated, updateWorkStatus: authUpdateWorkStatus } = useAuth();
 
   const [tasks, setTasks] = useState([]);
   const [lists, setLists] = useState(SYSTEM_SMART_LISTS);
@@ -117,6 +118,21 @@ export const TaskProvider = ({ children }) => {
   const [selectedListId, setSelectedListId] = useState('list-all');
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Time Tracking State
+  const [timeLogs, setTimeLogs] = useState(() => {
+    try {
+      const stored = localStorage.getItem('tasker_time_logs');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const activeTimeLog = timeLogs.find(l => {
+    const myId = user?.id || 'demo-user';
+    return (l.user_id === myId || (user?.email && l.user_email === user.email)) && !l.end_time;
+  });
 
   // View Options Preferences (Group by, Sort by, Order)
   const [groupBy, setGroupBy] = useState(() => {
@@ -366,6 +382,16 @@ export const TaskProvider = ({ children }) => {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_time_logs' },
+        () => { fetchInitialData(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles' },
+        () => { fetchInitialData(); }
+      )
       .subscribe();
 
     realtimeChannelRef.current = channel;
@@ -413,16 +439,39 @@ export const TaskProvider = ({ children }) => {
       if (tagsData && tagsData.length > 0) setDropdownTags(tagsData);
 
       // 5. Fetch Scoped Tasks with Many-to-Many Generic Tags (RLS Enforced)
-      const { data: tasksData, error: tasksErr } = await supabase
+      let tasksData = null;
+      let tasksErr = null;
+
+      // Try selecting task_checklists relation first, with fallback to subtasks if table migration pending
+      const fullQuery = await supabase
         .from('tasks')
         .select(`
           *,
+          task_checklists(*),
           subtasks(*),
           task_attachments(*),
           task_acknowledgements(*, profiles:user_id(full_name, email, avatar_id)),
           task_tag_mapping(*, dropdown_tags(*))
         `)
         .order('created_at', { ascending: false });
+
+      if (fullQuery.error && (fullQuery.error.message?.includes('task_checklists') || fullQuery.error.code === 'PGRST205' || fullQuery.error.code === 'PGRST200')) {
+        const fallbackQuery = await supabase
+          .from('tasks')
+          .select(`
+            *,
+            subtasks(*),
+            task_attachments(*),
+            task_acknowledgements(*, profiles:user_id(full_name, email, avatar_id)),
+            task_tag_mapping(*, dropdown_tags(*))
+          `)
+          .order('created_at', { ascending: false });
+        tasksData = fallbackQuery.data;
+        tasksErr = fallbackQuery.error;
+      } else {
+        tasksData = fullQuery.data;
+        tasksErr = fullQuery.error;
+      }
 
       if (tasksErr) throw tasksErr;
 
@@ -448,6 +497,16 @@ export const TaskProvider = ({ children }) => {
           const managerApproved = t.manager_approved !== undefined ? Boolean(t.manager_approved) : (t.is_completed ? true : Boolean(localAppr.manager_approved));
           const subManagerApproved = t.sub_manager_approved !== undefined ? Boolean(t.sub_manager_approved) : (t.is_completed ? true : Boolean(localAppr.sub_manager_approved));
 
+          const rawChecklists = (t.task_checklists && t.task_checklists.length > 0)
+            ? t.task_checklists
+            : (t.subtasks || []);
+          const sortedChecklists = [...rawChecklists].sort((a, b) => {
+            const ordA = a.order_index ?? 0;
+            const ordB = b.order_index ?? 0;
+            if (ordA !== ordB) return ordA - ordB;
+            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+          });
+
           return {
             ...t,
             status: computedStatus,
@@ -460,6 +519,8 @@ export const TaskProvider = ({ children }) => {
             assigned_users: Array.isArray(t.assigned_users) && t.assigned_users.length > 0
               ? t.assigned_users
               : (t.assigned_to ? [t.assigned_to] : []),
+            task_checklists: sortedChecklists,
+            subtasks: sortedChecklists,
             tags: (t.task_tag_mapping || []).map(m => m.dropdown_tags).filter(Boolean),
             task_acknowledgements: (t.task_acknowledgements || []).map(ack => ({
               ...ack,
@@ -471,6 +532,36 @@ export const TaskProvider = ({ children }) => {
       } else {
         setTasks([]);
       }
+
+      // 6. Fetch Time Logs (with resilient fallback if table pending migration)
+      let logs = [];
+      try {
+        const { data: logsData, error: logsErr } = await supabase
+          .from('task_time_logs')
+          .select('*')
+          .order('start_time', { ascending: false });
+        if (!logsErr && logsData) {
+          logs = logsData;
+        }
+      } catch (logErr) {
+        // Non-blocking fallback
+      }
+
+      // Merge with localStorage cached logs for demo mode or offline resilience
+      const localLogsStr = localStorage.getItem('tasker_time_logs');
+      if (localLogsStr) {
+        try {
+          const localLogs = JSON.parse(localLogsStr);
+          if (Array.isArray(localLogs)) {
+            localLogs.forEach(locL => {
+              if (!logs.some(l => l.id === locL.id)) {
+                logs.push(locL);
+              }
+            });
+          }
+        } catch (e) {}
+      }
+      setTimeLogs(logs);
     } catch (err) {
       console.error('[TaskContext] Error fetching Supabase data:', err);
     }
@@ -947,6 +1038,25 @@ export const TaskProvider = ({ children }) => {
       const todoStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('to do'));
       if (todoStatus) sanitizedUpdates.status_id = todoStatus.id;
       sanitizedUpdates.is_completed = false;
+    } else if (sanitizedUpdates.status === 'in_progress' || sanitizedUpdates.status === 'working') {
+      const inProgStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('progress')) || dropdownStatuses[1];
+      if (inProgStatus) sanitizedUpdates.status_id = inProgStatus.id;
+      sanitizedUpdates.is_completed = false;
+    }
+
+    if (sanitizedUpdates.status_id && !sanitizedUpdates.status) {
+      const matchedSt = dropdownStatuses.find(st => st.id === sanitizedUpdates.status_id);
+      if (matchedSt) {
+        if (matchedSt.is_completed_state || matchedSt.name.toLowerCase().includes('complete')) {
+          sanitizedUpdates.status = 'completed';
+        } else if (matchedSt.name.toLowerCase().includes('review')) {
+          sanitizedUpdates.status = 'under_review';
+        } else if (matchedSt.name.toLowerCase().includes('progress')) {
+          sanitizedUpdates.status = 'in_progress';
+        } else if (matchedSt.name.toLowerCase().includes('to do')) {
+          sanitizedUpdates.status = 'to_do';
+        }
+      }
     }
 
     if (sanitizedUpdates.assigned_users !== undefined) {
@@ -1008,8 +1118,34 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    // Strict Start-to-Finish time tracking: auto-stop timer when task is completed or submitted to review
+    const statusObj = dropdownStatuses.find(st => st.id === sanitizedUpdates.status_id);
+    const isNowCompleted = sanitizedUpdates.is_completed === true || 
+                           sanitizedUpdates.status === 'completed' || 
+                           statusObj?.is_completed_state === true;
+    const isNowReview = sanitizedUpdates.status === 'under_review' || 
+                        statusObj?.name?.toLowerCase().includes('review');
+
+    if ((isNowCompleted || isNowReview) && activeTimeLog && activeTimeLog.task_id === taskId) {
+      await stopTimer(taskId, 'ready');
+    }
+
+    // Save previous snapshot for optimistic rollback
+    const previousTasks = tasks;
+
+    // Instant Optimistic State Update across UI, Delegation Map, and Sidebar Smart Views
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          ...sanitizedUpdates,
+          status: sanitizedUpdates.status || (isNowCompleted ? 'completed' : isNowReview ? 'under_review' : t.status)
+        };
+      }
+      return t;
+    }));
+
     if (isDemoMode || !isSupabaseConfigured()) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...sanitizedUpdates } : t));
       return true;
     }
 
@@ -1017,6 +1153,7 @@ export const TaskProvider = ({ children }) => {
       let dbPayload = { ...sanitizedUpdates };
       delete dbPayload.tags;
       delete dbPayload.subtasks;
+      delete dbPayload.task_checklists;
       delete dbPayload.task_attachments;
       delete dbPayload.task_acknowledgements;
       delete dbPayload.profiles;
@@ -1072,6 +1209,7 @@ export const TaskProvider = ({ children }) => {
       }
 
       if (error) {
+        setTasks(previousTasks);
         toast.error(error.message);
         return false;
       }
@@ -1105,10 +1243,42 @@ export const TaskProvider = ({ children }) => {
       await fetchInitialData();
       return true;
     } catch (err) {
+      setTasks(previousTasks);
       toast.error('Failed to update task: ' + err.message);
       return false;
     }
   };
+
+  const isTaskAssignedToManagement = useCallback((task) => {
+    if (!task) return false;
+    const userIds = Array.isArray(task.assigned_users) && task.assigned_users.length > 0
+      ? task.assigned_users
+      : (task.assigned_to ? [task.assigned_to] : []);
+
+    const userRole = profile?.role || 'member';
+    const isCurrentUserManagement = ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(userRole);
+
+    // If unassigned: check creator or current user
+    if (userIds.length === 0) {
+      const creator = allUsers.find(u => u.id === task.created_by);
+      if (creator && ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(creator.role)) {
+        return true;
+      }
+      return isCurrentUserManagement;
+    }
+
+    // If assigned: check if ANY assigned user has management role
+    return userIds.some(uid => {
+      const u = allUsers.find(user => user.id === uid);
+      if (u && ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(u.role)) {
+        return true;
+      }
+      if (user && user.id === uid && isCurrentUserManagement) {
+        return true;
+      }
+      return false;
+    });
+  }, [allUsers, profile, user]);
 
   const toggleTaskCompletion = async (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
@@ -1165,6 +1335,37 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
+    // Strict Start-to-Finish time tracking: auto-stop timer when task is completed or submitted to review
+    if (activeTimeLog && activeTimeLog.task_id === taskId) {
+      await stopTimer(taskId, 'ready');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // If task is assigned to a Manager or Sub-Manager: NO APPROVAL NEEDED!
+    // Directly complete the task immediately.
+    // ─────────────────────────────────────────────────────────────
+    const assignedToManagement = isTaskAssignedToManagement(targetTask);
+
+    if (assignedToManagement) {
+      const completedStatus = dropdownStatuses.find(st => st.is_completed_state || st.name.toLowerCase().includes('complete')) || dropdownStatuses[3];
+      toast.success(`🎉 Task completed!`, {
+        id: `task-completed-${taskId}`,
+        duration: 3000
+      });
+
+      return await updateTask(taskId, {
+        is_completed: true,
+        status: 'completed',
+        status_id: completedStatus?.id,
+        manager_approved: true,
+        sub_manager_approved: true,
+        manager_approved_by: targetTask.manager_approved_by || user?.id,
+        sub_manager_approved_by: targetTask.sub_manager_approved_by || user?.id,
+        manager_approved_at: targetTask.manager_approved_at || new Date().toISOString(),
+        sub_manager_approved_at: targetTask.sub_manager_approved_at || new Date().toISOString()
+      });
+    }
+
     const isUnderReview = targetTask.status === 'under_review' || 
       dropdownStatuses.find(st => st.id === targetTask.status_id)?.name?.toLowerCase() === 'in review';
 
@@ -1205,6 +1406,11 @@ export const TaskProvider = ({ children }) => {
   const approveTask = async (taskId, roleOverride = null) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return false;
+
+    // Strict Start-to-Finish time tracking: auto-stop timer if active on this task
+    if (activeTimeLog && activeTimeLog.task_id === taskId) {
+      await stopTimer(taskId, 'ready');
+    }
 
     const userRole = profile?.role || 'member';
     const isManagerRole = ['manager', 'admin'].includes(userRole);
@@ -1405,6 +1611,167 @@ export const TaskProvider = ({ children }) => {
     }
   };
 
+  // ─────────────────────────────────────────────────
+  // Advanced Time Tracking & Presence Controls
+  // ─────────────────────────────────────────────────
+  const updateWorkStatus = async (status) => {
+    if (authUpdateWorkStatus) {
+      await authUpdateWorkStatus(status);
+    }
+    const myId = user?.id || 'demo-user';
+    setAllUsers(prev => prev.map(u => (u.id === myId || u.email === user?.email) ? { ...u, work_status: status } : u));
+    return true;
+  };
+
+  const startTimer = async (taskId) => {
+    const currentUserId = user?.id || 'demo-user';
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return false;
+
+    // Edge Case: If user is already running this exact task, do nothing
+    if (activeTimeLog && activeTimeLog.task_id === taskId) {
+      return true;
+    }
+
+    // Edge Case (Switching Tasks): If user clicks Play on Task B while Task A is actively running,
+    // automatically stop the timer for Task A before starting Task B
+    if (activeTimeLog && activeTimeLog.task_id !== taskId) {
+      await stopTimer(activeTimeLog.task_id, 'working');
+    }
+
+    const startTime = new Date().toISOString();
+    const tempId = 'log-' + Math.random().toString(36).substr(2, 9);
+    const newLog = {
+      id: tempId,
+      task_id: taskId,
+      user_id: currentUserId,
+      user_email: user?.email || 'user@team.com',
+      start_time: startTime,
+      end_time: null,
+      duration_seconds: 0
+    };
+
+    const updatedLogs = [newLog, ...timeLogs];
+    setTimeLogs(updatedLogs);
+    localStorage.setItem('tasker_time_logs', JSON.stringify(updatedLogs));
+
+    // Automatically set status to 'working'
+    await updateWorkStatus('working');
+
+    if (!isDemoMode && isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('task_time_logs')
+          .insert({
+            task_id: taskId,
+            user_id: currentUserId,
+            start_time: startTime,
+            end_time: null,
+            duration_seconds: 0
+          })
+          .select()
+          .single();
+
+        if (!error && data) {
+          setTimeLogs(prev => prev.map(l => l.id === tempId ? data : l));
+        }
+      } catch (err) {
+        console.warn('task_time_logs insert warning:', err);
+      }
+    }
+
+    toast.success(`▶️ Timer started on "${targetTask.title}"`, {
+      id: `timer-start-${taskId}`,
+      duration: 2500
+    });
+    return true;
+  };
+
+  const stopTimer = async (taskId = null, nextStatus = 'ready') => {
+    const currentUserId = user?.id || 'demo-user';
+    const matchingLogs = timeLogs.filter(l => 
+      (l.user_id === currentUserId || (user?.email && l.user_email === user.email)) && 
+      !l.end_time && 
+      (!taskId || l.task_id === taskId)
+    );
+
+    if (matchingLogs.length === 0) return false;
+
+    const endTime = new Date().toISOString();
+    let totalStoppedDuration = 0;
+
+    const updatedLogs = timeLogs.map(l => {
+      const match = matchingLogs.find(m => m.id === l.id);
+      if (match) {
+        const durationSeconds = Math.max(1, Math.round((new Date(endTime).getTime() - new Date(match.start_time).getTime()) / 1000));
+        totalStoppedDuration = durationSeconds;
+        return {
+          ...l,
+          end_time: endTime,
+          duration_seconds: durationSeconds
+        };
+      }
+      return l;
+    });
+
+    setTimeLogs(updatedLogs);
+    localStorage.setItem('tasker_time_logs', JSON.stringify(updatedLogs));
+
+    // Update presence status if specified
+    if (nextStatus) {
+      await updateWorkStatus(nextStatus);
+    }
+
+    if (!isDemoMode && isSupabaseConfigured()) {
+      try {
+        for (const log of matchingLogs) {
+          const durationSeconds = Math.max(1, Math.round((new Date(endTime).getTime() - new Date(log.start_time).getTime()) / 1000));
+          if (log.id && !log.id.startsWith('log-')) {
+            await supabase
+              .from('task_time_logs')
+              .update({
+                end_time: endTime,
+                duration_seconds: durationSeconds
+              })
+              .eq('id', log.id);
+          } else {
+            await supabase
+              .from('task_time_logs')
+              .update({
+                end_time: endTime,
+                duration_seconds: durationSeconds
+              })
+              .eq('task_id', log.task_id)
+              .eq('user_id', currentUserId)
+              .is('end_time', null);
+          }
+        }
+      } catch (err) {
+        console.warn('task_time_logs update warning:', err);
+      }
+    }
+
+    const firstTaskId = matchingLogs[0]?.task_id;
+    toast(`⏱️ Timer stopped (${formatDurationCompact(totalStoppedDuration || 1)})`, {
+      icon: '⏱️',
+      id: `timer-stop-${firstTaskId || 'active'}`,
+      duration: 2500
+    });
+    return true;
+  };
+
+  // Alias for compatibility
+  const pauseTimer = stopTimer;
+
+  const getTaskTimeLogs = (taskId) => {
+    return timeLogs.filter(l => l.task_id === taskId);
+  };
+
+  const getTaskTotalSeconds = (taskId) => {
+    const logs = timeLogs.filter(l => l.task_id === taskId);
+    return logs.reduce((acc, log) => acc + (log.duration_seconds || 0), 0);
+  };
+
   const toggleAcknowledgement = async (taskId, ackId, targetUserId) => {
     const currentUserId = user?.id || 'demo-user';
     const currentUserRole = profile?.role || 'member';
@@ -1421,6 +1788,11 @@ export const TaskProvider = ({ children }) => {
     const targetAck = (task.task_acknowledgements || []).find(a => a.id === ackId || a.user_id === targetUserId);
     const newStatus = !targetAck?.is_acknowledged;
     const memberName = targetAck?.full_name || 'Team Member';
+
+    // Strict Start-to-Finish: Auto-stop active timer if finishing work on this task ("Finish My Part")
+    if (newStatus === true && activeTimeLog && activeTimeLog.task_id === taskId) {
+      await stopTimer(taskId, 'ready');
+    }
 
     const updatedAcks = (task.task_acknowledgements || []).map(ack => {
       if (ack.id === ackId || ack.user_id === targetUserId) {
@@ -1497,68 +1869,236 @@ export const TaskProvider = ({ children }) => {
   // ─────────────────────────────────────────────────
   // Subtasks CRUD
   // ─────────────────────────────────────────────────
-  const addSubtask = async (taskId, title) => {
-    if (!title.trim()) return;
-    const newSub = { id: 'sub-' + Date.now(), task_id: taskId, title, is_completed: false };
-
-    if (isDemoMode || !isSupabaseConfigured()) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), newSub] } : t));
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title }).select().single();
-      if (error) throw error;
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), data] } : t));
-    } catch (err) {
-      toast.error('Failed to add subtask: ' + err.message);
-    }
-  };
-
-  const toggleSubtask = async (taskId, subtaskId) => {
+  // Task Checklist & Subtasks System (Optimistic UI)
+  // ─────────────────────────────────────────────────
+  const addChecklistItem = async (taskId, title) => {
+    if (!title || !title.trim()) return;
+    const tempId = 'chk-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
     const task = tasks.find(t => t.id === taskId);
-    const subtask = task?.subtasks?.find(s => s.id === subtaskId);
-    if (!subtask) return;
+    const existingList = task?.task_checklists || task?.subtasks || [];
+    const orderIndex = existingList.length;
 
-    const newStatus = !subtask.is_completed;
+    const newItem = {
+      id: tempId,
+      task_id: taskId,
+      title: title.trim(),
+      is_completed: false,
+      order_index: orderIndex,
+      created_at: new Date().toISOString()
+    };
+
+    // Instant Optimistic UI Update
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const list = t.task_checklists || t.subtasks || [];
+        const nextList = [...list, newItem];
+        return { ...t, task_checklists: nextList, subtasks: nextList };
+      }
+      return t;
+    }));
 
     if (isDemoMode || !isSupabaseConfigured()) {
-      setTasks(prev => prev.map(t => {
-        if (t.id === taskId) {
-          return { ...t, subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, is_completed: newStatus } : s) };
-        }
-        return t;
-      }));
-      return;
+      return newItem;
     }
 
     try {
-      const { error } = await supabase.from('subtasks').update({ is_completed: newStatus }).eq('id', subtaskId);
+      // Try insert into task_checklists first
+      let { data, error } = await supabase
+        .from('task_checklists')
+        .insert({
+          task_id: taskId,
+          title: title.trim(),
+          is_completed: false,
+          order_index: orderIndex
+        })
+        .select()
+        .single();
+
+      // Fallback to subtasks if task_checklists migration is pending
+      if (error && (error.message?.includes('task_checklists') || error.code === 'PGRST205' || error.code === '42P01')) {
+        const fallback = await supabase
+          .from('subtasks')
+          .insert({ task_id: taskId, title: title.trim() })
+          .select()
+          .single();
+        data = fallback.data;
+        error = fallback.error;
+      }
+
       if (error) throw error;
+
+      if (data) {
+        setTasks(prev => prev.map(t => {
+          if (t.id === taskId) {
+            const list = t.task_checklists || t.subtasks || [];
+            const nextList = list.map(item => item.id === tempId ? data : item);
+            return { ...t, task_checklists: nextList, subtasks: nextList };
+          }
+          return t;
+        }));
+      }
+    } catch (err) {
+      toast.error('Failed to add checklist item: ' + err.message);
+      // Rollback optimistic state
       setTasks(prev => prev.map(t => {
         if (t.id === taskId) {
-          return { ...t, subtasks: t.subtasks.map(s => s.id === subtaskId ? { ...s, is_completed: newStatus } : s) };
+          const list = (t.task_checklists || t.subtasks || []).filter(item => item.id !== tempId);
+          return { ...t, task_checklists: list, subtasks: list };
         }
         return t;
       }));
-    } catch (err) {
-      toast.error('Error updating subtask: ' + err.message);
     }
   };
 
-  const deleteSubtask = async (taskId, subtaskId) => {
+  const toggleChecklistItem = async (taskId, itemId) => {
+    const task = tasks.find(t => t.id === taskId);
+    const list = task?.task_checklists || task?.subtasks || [];
+    const item = list.find(s => s.id === itemId);
+    if (!item) return;
+
+    const newStatus = !item.is_completed;
+
+    // Instant Optimistic UI Update
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const currentList = t.task_checklists || t.subtasks || [];
+        const nextList = currentList.map(s => s.id === itemId ? { ...s, is_completed: newStatus } : s);
+        return { ...t, task_checklists: nextList, subtasks: nextList };
+      }
+      return t;
+    }));
+
     if (isDemoMode || !isSupabaseConfigured()) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: t.subtasks.filter(s => s.id !== subtaskId) } : t));
       return;
     }
 
     try {
-      await supabase.from('subtasks').delete().eq('id', subtaskId);
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: t.subtasks.filter(s => s.id !== subtaskId) } : t));
+      let { error } = await supabase
+        .from('task_checklists')
+        .update({ is_completed: newStatus })
+        .eq('id', itemId);
+
+      if (error && (error.message?.includes('task_checklists') || error.code === 'PGRST205' || error.code === '42P01')) {
+        const fallback = await supabase
+          .from('subtasks')
+          .update({ is_completed: newStatus })
+          .eq('id', itemId);
+        error = fallback.error;
+      }
+
+      if (error) throw error;
     } catch (err) {
-      toast.error('Error deleting subtask: ' + err.message);
+      toast.error('Error updating checklist item: ' + err.message);
+      // Revert optimistic state
+      setTasks(prev => prev.map(t => {
+        if (t.id === taskId) {
+          const currentList = t.task_checklists || t.subtasks || [];
+          const nextList = currentList.map(s => s.id === itemId ? { ...s, is_completed: !newStatus } : s);
+          return { ...t, task_checklists: nextList, subtasks: nextList };
+        }
+        return t;
+      }));
     }
   };
+
+  const updateChecklistItemTitle = async (taskId, itemId, newTitle) => {
+    if (!newTitle || !newTitle.trim()) return;
+    const task = tasks.find(t => t.id === taskId);
+    const list = task?.task_checklists || task?.subtasks || [];
+    const item = list.find(s => s.id === itemId);
+    if (!item || item.title === newTitle.trim()) return;
+
+    const previousTitle = item.title;
+
+    // Instant Optimistic UI Update
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const currentList = t.task_checklists || t.subtasks || [];
+        const nextList = currentList.map(s => s.id === itemId ? { ...s, title: newTitle.trim() } : s);
+        return { ...t, task_checklists: nextList, subtasks: nextList };
+      }
+      return t;
+    }));
+
+    if (isDemoMode || !isSupabaseConfigured()) {
+      return;
+    }
+
+    try {
+      let { error } = await supabase
+        .from('task_checklists')
+        .update({ title: newTitle.trim() })
+        .eq('id', itemId);
+
+      if (error && (error.message?.includes('task_checklists') || error.code === 'PGRST205' || error.code === '42P01')) {
+        const fallback = await supabase
+          .from('subtasks')
+          .update({ title: newTitle.trim() })
+          .eq('id', itemId);
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+    } catch (err) {
+      toast.error('Error updating title: ' + err.message);
+      // Revert
+      setTasks(prev => prev.map(t => {
+        if (t.id === taskId) {
+          const currentList = t.task_checklists || t.subtasks || [];
+          const nextList = currentList.map(s => s.id === itemId ? { ...s, title: previousTitle } : s);
+          return { ...t, task_checklists: nextList, subtasks: nextList };
+        }
+        return t;
+      }));
+    }
+  };
+
+  const deleteChecklistItem = async (taskId, itemId) => {
+    const task = tasks.find(t => t.id === taskId);
+    const list = task?.task_checklists || task?.subtasks || [];
+    const deletedItem = list.find(s => s.id === itemId);
+
+    // Instant Optimistic UI Update
+    setTasks(prev => prev.map(t => {
+      if (t.id === taskId) {
+        const currentList = t.task_checklists || t.subtasks || [];
+        const nextList = currentList.filter(s => s.id !== itemId);
+        return { ...t, task_checklists: nextList, subtasks: nextList };
+      }
+      return t;
+    }));
+
+    if (isDemoMode || !isSupabaseConfigured()) {
+      return;
+    }
+
+    try {
+      let { error } = await supabase.from('task_checklists').delete().eq('id', itemId);
+      if (error && (error.message?.includes('task_checklists') || error.code === 'PGRST205' || error.code === '42P01')) {
+        const fallback = await supabase.from('subtasks').delete().eq('id', itemId);
+        error = fallback.error;
+      }
+      if (error) throw error;
+    } catch (err) {
+      toast.error('Error deleting checklist item: ' + err.message);
+      if (deletedItem) {
+        // Revert
+        setTasks(prev => prev.map(t => {
+          if (t.id === taskId) {
+            const currentList = t.task_checklists || t.subtasks || [];
+            return { ...t, task_checklists: [...currentList, deletedItem], subtasks: [...currentList, deletedItem] };
+          }
+          return t;
+        }));
+      }
+    }
+  };
+
+  // Backwards compatible aliases
+  const addSubtask = addChecklistItem;
+  const toggleSubtask = toggleChecklistItem;
+  const deleteSubtask = deleteChecklistItem;
+  const updateSubtask = updateChecklistItemTitle;
 
   // ─────────────────────────────────────────────────
   // ─────────────────────────────────────────────────
@@ -2111,6 +2651,17 @@ export const TaskProvider = ({ children }) => {
              (profile?.id && (assignedUsers.includes(profile.id) || t.assigned_to === profile.id));
     }
 
+    // 5. "Currently Working On" Smart View: Tasks where status === 'in_progress' globally
+    if (selectedListId === 'list-working-on') {
+      const inProgStatusId = dropdownStatuses.find(s => s.name?.toLowerCase().includes('progress'))?.id;
+      return !t.is_completed && (
+        t.status === 'in_progress' || 
+        t.status === 'working' ||
+        (inProgStatusId && t.status_id === inProgStatusId) ||
+        timeLogs?.some(l => l.task_id === t.id && !l.end_time)
+      );
+    }
+
     return t.list_id === selectedListId;
   });
 
@@ -2146,13 +2697,19 @@ export const TaskProvider = ({ children }) => {
       addTask,
       updateTask,
       toggleTaskCompletion,
+      isTaskAssignedToManagement,
       approveTask,
       rejectTask,
       deleteTask,
       toggleAcknowledgement,
+      addChecklistItem,
+      toggleChecklistItem,
+      deleteChecklistItem,
+      updateChecklistItemTitle,
       addSubtask,
       toggleSubtask,
       deleteSubtask,
+      updateSubtask,
       addAttachment,
       deleteAttachment,
       createList,
@@ -2172,6 +2729,16 @@ export const TaskProvider = ({ children }) => {
       setOrder,
       refreshTasks,
       fetchTasks: refreshTasks,
+
+      // Advanced Time Tracking & Presence Exports
+      timeLogs,
+      activeTimeLog,
+      startTimer,
+      stopTimer,
+      pauseTimer,
+      getTaskTimeLogs,
+      getTaskTotalSeconds,
+      updateWorkStatus,
     }}>
       {children}
     </TaskContext.Provider>

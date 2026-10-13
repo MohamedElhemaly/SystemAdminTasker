@@ -24,7 +24,7 @@ import {
   Users, GitFork, Shield, CheckCircle2, Clock, 
   CheckSquare, Check, AlertCircle, Plus, Search, 
   X, Layers, Grid, Network, Filter, Sparkles, 
-  SlidersHorizontal, CheckCheck, RefreshCw, UserCheck
+  SlidersHorizontal, CheckCheck, RefreshCw, UserCheck, Inbox
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -91,253 +91,30 @@ const DelegationEdge = ({
   );
 };
 
-// ─────────────────────────────────────────────────
-// Interactive User Node with Inline Task Creator & Checklists
-// ─────────────────────────────────────────────────
-const EnterpriseUserNode = ({ data }) => {
-  const { toggleTaskCompletion, setSelectedTaskId, addTask, dropdownPriorities } = useTasks();
-  const { user } = useAuth();
-  const [isAddingTask, setIsAddingTask] = useState(false);
-  const [quickTitle, setQuickTitle] = useState('');
-  const [quickPriority, setQuickPriority] = useState('');
+import { UserNode } from './UserNode';
+import { TaskPoolNode } from './TaskPoolNode';
 
-  const avatarSrc = getAvatarUrl(data.avatar_id, data.label);
-  const tasks = data.assignedTasks || [];
-  const completedCount = tasks.filter(t => t.is_completed).length;
-  const totalCount = tasks.length;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
-  const handleQuickCreate = async (e) => {
-    e?.preventDefault();
-    if (!quickTitle.trim()) return;
-
-    try {
-      await addTask({
-        title: quickTitle.trim(),
-        assigned_to: data.userId,
-        priority_id: quickPriority || (dropdownPriorities?.[0]?.id || null),
-      });
-      setQuickTitle('');
-      setIsAddingTask(false);
-      toast.success(`Task delegated to ${data.label}!`, {
-        id: `delegated-${data.userId}`,
-        duration: 2500,
-      });
-    } catch (err) {
-      toast.error('Failed to assign task: ' + err.message);
-    }
-  };
-
-  const isHighlighted = data.isSearchMatch;
-  const isDimmed = data.isSearchActive && !data.isSearchMatch;
-
-  return (
-    <div 
-      className={`p-4 rounded-2xl bg-white dark:bg-[#1f1f23] border-2 text-slate-900 dark:text-slate-100 shadow-xl min-w-[280px] max-w-[340px] select-none transition-all duration-200 ${
-        isHighlighted 
-          ? 'border-blue-500 ring-4 ring-blue-500/20 scale-[1.02] shadow-2xl' 
-          : 'border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
-      } ${isDimmed ? 'opacity-35 grayscale-[0.3]' : 'opacity-100'}`}
-    >
-      {/* Multi-directional connection handles */}
-      <Handle type="target" position={Position.Top} className="!bg-blue-500 dark:!bg-[#4772fa] !w-3.5 !h-3.5" />
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-500 dark:!bg-[#4772fa] !w-3.5 !h-3.5" />
-      <Handle type="target" id="left" position={Position.Left} className="!bg-blue-500 dark:!bg-[#4772fa] !w-2.5 !h-2.5" />
-      <Handle type="source" id="right" position={Position.Right} className="!bg-blue-500 dark:!bg-[#4772fa] !w-2.5 !h-2.5" />
-
-      {/* User Header */}
-      <div className="flex items-start gap-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
-        <div className="relative shrink-0">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 p-0.5 shadow-sm">
-            <img src={avatarSrc} alt="" className="w-full h-full rounded-full object-cover bg-slate-100 dark:bg-slate-800" />
-          </div>
-          {totalCount > 0 && (
-            <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white border-2 border-white dark:border-[#1f1f23] ${
-              progressPercent === 100 ? 'bg-emerald-500' : 'bg-blue-500'
-            }`}>
-              {totalCount}
-            </span>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-1">
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-tight truncate" title={data.label}>
-              {data.label}
-            </h4>
-            <span className={`px-1.5 py-0.2 rounded-md text-[8.5px] font-bold uppercase tracking-wider shrink-0 border ${
-              data.role === 'manager' 
-                ? 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40' 
-                : data.role === 'sub_manager' || data.role === 'deputy_manager'
-                ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40'
-                : 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
-            }`}>
-              {data.role === 'manager' ? 'Manager' : data.role === 'sub_manager' || data.role === 'deputy_manager' ? 'Sub-Mgr' : 'Member'}
-            </span>
-          </div>
-
-          <span className="text-[10.5px] text-slate-400 dark:text-slate-400 block truncate mt-0.5">
-            {data.email}
-          </span>
-
-          {/* Workload Progress Bar */}
-          {totalCount > 0 && (
-            <div className="mt-2 space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                <span>{completedCount}/{totalCount} Completed</span>
-                <span>{progressPercent}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    progressPercent === 100 
-                      ? 'bg-emerald-500' 
-                      : 'bg-gradient-to-r from-blue-500 to-indigo-500'
-                  }`}
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Quick Add / Delegate Action Button */}
-      <div className="mt-2.5 flex items-center justify-between">
-        <span className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase flex items-center gap-1">
-          <CheckSquare className="w-3 h-3 text-blue-500" /> Tasks ({totalCount})
-        </span>
-
-        <button
-          type="button"
-          onClick={() => setIsAddingTask(!isAddingTask)}
-          className="nodrag flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 px-2 py-0.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors cursor-pointer"
-        >
-          <Plus className="w-3 h-3" />
-          <span>{isAddingTask ? 'Close' : 'Delegate'}</span>
-        </button>
-      </div>
-
-      {/* Inline Quick Task Creator Form */}
-      {isAddingTask && (
-        <form onSubmit={handleQuickCreate} className="nodrag mt-2 p-2 rounded-xl bg-blue-50/70 dark:bg-blue-900/15 border border-blue-200/80 dark:border-blue-500/30 space-y-2 animate-in fade-in duration-150">
-          <input
-            type="text"
-            value={quickTitle}
-            onChange={(e) => setQuickTitle(e.target.value)}
-            placeholder={`Task title for ${data.label.split(' ')[0]}...`}
-            autoFocus
-            className="w-full text-xs px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#18181c] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-
-          <div className="flex items-center justify-between gap-1">
-            <select
-              value={quickPriority}
-              onChange={(e) => setQuickPriority(e.target.value)}
-              className="text-[10px] px-1.5 py-1 rounded bg-white dark:bg-[#18181c] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-            >
-              <option value="">Priority: Normal</option>
-              {dropdownPriorities?.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setIsAddingTask(false)}
-                className="px-2 py-1 text-[10px] rounded text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={!quickTitle.trim()}
-                className="px-2.5 py-1 text-[10px] font-semibold rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors cursor-pointer"
-              >
-                Assign
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {/* Embedded Assigned Tasks Checklist */}
-      <div className="mt-2 space-y-1.5">
-        {tasks.length > 0 ? (
-          <div className="space-y-1 max-h-44 overflow-y-auto pr-1 custom-scrollbar nodrag">
-            {tasks.map((t) => (
-              <div 
-                key={t.id} 
-                className="group flex items-center gap-2 p-1.5 rounded-xl bg-slate-50/90 dark:bg-[#25262c] hover:bg-slate-100 dark:hover:bg-[#2c2d35] border border-slate-200/70 dark:border-slate-800 transition-all text-xs"
-              >
-                {/* Interactive Checkbox */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleTaskCompletion(t.id);
-                  }}
-                  className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
-                    t.is_completed 
-                      ? 'bg-emerald-600 border-emerald-600 text-white' 
-                      : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1b1c20] hover:border-blue-500'
-                  }`}
-                  title={t.is_completed ? 'Mark Active' : 'Mark Done'}
-                >
-                  {t.is_completed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                </button>
-
-                {/* Clickable Task Title -> Opens Detail Drawer */}
-                <div 
-                  onClick={() => setSelectedTaskId(t.id)}
-                  className="flex-1 min-w-0 cursor-pointer"
-                  title="Click to view full details"
-                >
-                  <span className={`block truncate ${
-                    t.is_completed 
-                      ? 'line-through text-slate-400 dark:text-slate-500' 
-                      : 'text-slate-800 dark:text-slate-200 font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400'
-                  }`}>
-                    {t.title}
-                  </span>
-                </div>
-
-                {/* Status Badge */}
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold shrink-0 ${
-                  t.is_completed 
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300' 
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'
-                }`}>
-                  {t.is_completed ? 'Done' : 'Pending'}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div 
-            onClick={() => setIsAddingTask(true)}
-            className="p-3 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl hover:border-blue-300 dark:hover:border-blue-500/40 cursor-pointer transition-colors group"
-          >
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 group-hover:text-blue-500">
-              No tasks • Click to delegate
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+const nodeTypes = { 
+  userNode: UserNode,
+  taskPoolNode: TaskPoolNode
 };
-
-const nodeTypes = { userNode: EnterpriseUserNode };
 const edgeTypes = { delegationEdge: DelegationEdge };
 
 // ─────────────────────────────────────────────────
 // Main Task Delegation Map Canvas Component
 // ─────────────────────────────────────────────────
 const TaskDelegationMapCanvas = () => {
-  const { allTasks, allUsers, dropdownStatuses, selectedTask, setSelectedTaskId, addTask } = useTasks();
-  const { user } = useAuth();
+  const { 
+    allTasks, 
+    allUsers, 
+    dropdownStatuses, 
+    selectedTask, 
+    setSelectedTaskId, 
+    addTask,
+    updateTask,
+    timeLogs = []
+  } = useTasks();
+  const { user, profile } = useAuth();
   const reactFlowInstance = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -358,6 +135,26 @@ const TaskDelegationMapCanvas = () => {
     taskTitle: '',
   });
 
+  // Strict helper: check if a task is currently in progress / working
+  const isTaskInProgress = useCallback((t) => {
+    if (!t || t.is_completed) return false;
+    if (t.status === 'in_progress' || t.status === 'working') return true;
+    const inProgStatusId = dropdownStatuses.find(s => s.name?.toLowerCase().includes('progress'))?.id;
+    if (inProgStatusId && t.status_id === inProgStatusId) return true;
+    if (Array.isArray(timeLogs) && timeLogs.some(l => l.task_id === t.id && !l.end_time)) return true;
+    return false;
+  }, [dropdownStatuses, timeLogs]);
+
+  // Backlog Pool Tasks: Incomplete tasks that are NOT in progress OR have empty assigned_users
+  const poolTasks = useMemo(() => {
+    return allTasks.filter(t => {
+      if (t.is_completed) return false;
+      const isUnassigned = !t.assigned_to && (!t.assigned_users || t.assigned_users.length === 0);
+      const isNotWorking = !isTaskInProgress(t);
+      return isUnassigned || isNotWorking;
+    });
+  }, [allTasks, isTaskInProgress]);
+
   // Calculate Map-Visible Tasks according to active filter
   const visibleTasks = useMemo(() => {
     return allTasks.filter(task => {
@@ -369,7 +166,7 @@ const TaskDelegationMapCanvas = () => {
         if (!hasVisibleTag && !hasVisibleStatus) return false;
       } else if (filterScope === 'all-delegated') {
         // Must have an assignee
-        if (!task.assigned_to) return false;
+        if (!task.assigned_to && (!task.assigned_users || task.assigned_users.length === 0)) return false;
       }
 
       // 2. Status filter
@@ -380,8 +177,79 @@ const TaskDelegationMapCanvas = () => {
     });
   }, [allTasks, filterScope, statusFilter, dropdownStatuses]);
 
+  // Drag-and-Drop Task Handler (Assign from pool / transfer between members / return to pool)
+  const handleTaskDrop = useCallback(async (taskId, targetUserId, sourceUserId) => {
+    if (!taskId) return;
+    if (sourceUserId === targetUserId) return;
+
+    // RBAC Security Check: Only Managers, Sub-Managers, and Admins can delegate / reassign tasks on the map
+    const userRole = profile?.role || 'member';
+    const isManagerOrSub = ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(userRole);
+    if (!isManagerOrSub) {
+      toast.error('🔒 Access Denied: Only Managers and Sub-Managers can reassign tasks on the map.', {
+        id: 'map-reassign-denied'
+      });
+      return;
+    }
+
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // 1. Dropped into Task Pool -> Reset status to 'to_do' and unassign
+    if (!targetUserId || targetUserId === 'pool') {
+      const todoStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('to do')) || dropdownStatuses[0];
+      try {
+        await updateTask(taskId, {
+          assigned_to: null,
+          assigned_users: [],
+          status: 'to_do',
+          status_id: todoStatus ? todoStatus.id : undefined,
+          is_completed: false
+        });
+        toast.success(`Moved "${task.title}" to Task Pool (Backlog)`, {
+          id: `pool-drop-${taskId}`,
+          duration: 3000
+        });
+      } catch (err) {
+        toast.error('Failed to move task to pool: ' + err.message);
+      }
+      return;
+    }
+
+    // 2. Dropped onto a User Node -> Delegate & mark 'in_progress'
+    const targetUser = allUsers.find(u => u.id === targetUserId);
+    const targetName = targetUser?.full_name || targetUser?.email || 'Team Member';
+    const inProgStatus = dropdownStatuses.find(st => st.name.toLowerCase().includes('progress')) || dropdownStatuses[1];
+
+    try {
+      const success = await updateTask(taskId, {
+        assigned_to: targetUserId,
+        assigned_users: [targetUserId],
+        status: 'in_progress',
+        status_id: inProgStatus ? inProgStatus.id : undefined,
+        is_completed: false
+      });
+
+      if (success !== false) {
+        const sourceUser = allUsers.find(u => u.id === sourceUserId);
+        const sourceName = sourceUser ? ` from ${sourceUser.full_name}` : ' from Pool';
+        toast.success(`⚡ Delegated "${task.title}"${sourceName} to ${targetName} (In Progress)!`, {
+          id: `dnd-delegated-${taskId}`,
+          duration: 3500
+        });
+      }
+    } catch (err) {
+      toast.error('Failed to delegate task: ' + err.message);
+    }
+  }, [allTasks, allUsers, dropdownStatuses, updateTask, profile]);
+
   // Compute Layout Positions (Dagre, Role Tiers, or Grid)
   const computePositions = useCallback((rawNodes, rawEdges, layoutType) => {
+    const poolNode = rawNodes.find(n => n.id === 'task-pool-node');
+    const userNodes = rawNodes.filter(n => n.id !== 'task-pool-node');
+
+    let positionedUserNodes = [];
+
     if (layoutType === 'hierarchy') {
       const g = new dagre.graphlib.Graph();
       g.setDefaultEdgeLabel(() => ({}));
@@ -393,7 +261,7 @@ const TaskDelegationMapCanvas = () => {
         marginy: 50,
       });
 
-      rawNodes.forEach(node => {
+      userNodes.forEach(node => {
         g.setNode(node.id, { width: 320, height: 260 });
       });
 
@@ -403,7 +271,7 @@ const TaskDelegationMapCanvas = () => {
 
       dagre.layout(g);
 
-      return rawNodes.map(node => {
+      positionedUserNodes = userNodes.map(node => {
         const pos = g.node(node.id);
         return {
           ...node,
@@ -413,12 +281,10 @@ const TaskDelegationMapCanvas = () => {
           },
         };
       });
-    }
-
-    if (layoutType === 'roles') {
-      const managers = rawNodes.filter(n => n.data.role === 'manager');
-      const subManagers = rawNodes.filter(n => n.data.role === 'sub_manager' || n.data.role === 'deputy_manager');
-      const members = rawNodes.filter(n => n.data.role !== 'manager' && n.data.role !== 'sub_manager' && n.data.role !== 'deputy_manager');
+    } else if (layoutType === 'roles') {
+      const managers = userNodes.filter(n => n.data.role === 'manager');
+      const subManagers = userNodes.filter(n => n.data.role === 'sub_manager' || n.data.role === 'deputy_manager');
+      const members = userNodes.filter(n => n.data.role !== 'manager' && n.data.role !== 'sub_manager' && n.data.role !== 'deputy_manager');
 
       const tiers = [managers, subManagers, members].filter(t => t.length > 0);
       const maxCol = Math.max(...tiers.map(t => t.length), 1);
@@ -442,22 +308,33 @@ const TaskDelegationMapCanvas = () => {
           });
         });
       });
-
-      return layouted;
+      positionedUserNodes = layouted;
+    } else {
+      // Default Grid
+      positionedUserNodes = userNodes.map((node, index) => {
+        const col = index % 3;
+        const row = Math.floor(index / 3);
+        return {
+          ...node,
+          position: {
+            x: col * 360 + 60,
+            y: row * 300 + 60,
+          },
+        };
+      });
     }
 
-    // Default Grid
-    return rawNodes.map((node, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      return {
-        ...node,
-        position: {
-          x: col * 360 + 60,
-          y: row * 300 + 60,
+    if (poolNode) {
+      return [
+        {
+          ...poolNode,
+          position: poolNode.position || { x: -350, y: 50 },
         },
-      };
-    });
+        ...positionedUserNodes
+      ];
+    }
+
+    return positionedUserNodes;
   }, []);
 
   // Synchronize Nodes and Edges
@@ -466,22 +343,23 @@ const TaskDelegationMapCanvas = () => {
     if (roleFilter !== 'all') {
       activeUsers = activeUsers.filter(u => u.role === roleFilter);
     }
-    if (activeUsers.length === 0) {
-      setNodes([]);
-      setEdges([]);
-      return;
-    }
 
     const query = searchQuery.trim().toLowerCase();
 
-    // 1. Construct Nodes
-    const rawNodes = activeUsers.map((u) => {
-      const userTasks = visibleTasks.filter(t => t.assigned_to === u.id);
+    // 1. Construct User Nodes
+    const userNodes = activeUsers.map((u) => {
+      const allUserTasks = visibleTasks.filter(t => 
+        t.assigned_to === u.id || 
+        (Array.isArray(t.assigned_users) && t.assigned_users.includes(u.id))
+      );
+
+      // Standard User Nodes ONLY display tasks that are strictly in_progress / working
+      const inProgressTasks = allUserTasks.filter(t => isTaskInProgress(t));
 
       // Search matching logic
       const nameMatch = (u.full_name || u.email || '').toLowerCase().includes(query);
       const emailMatch = (u.email || '').toLowerCase().includes(query);
-      const taskMatch = userTasks.some(t => (t.title || '').toLowerCase().includes(query));
+      const taskMatch = allUserTasks.some(t => (t.title || '').toLowerCase().includes(query));
       const isSearchMatch = query.length > 0 && (nameMatch || emailMatch || taskMatch);
 
       return {
@@ -494,18 +372,32 @@ const TaskDelegationMapCanvas = () => {
           email: u.email,
           role: u.role || 'member',
           avatar_id: u.avatar_id,
-          assignedTasks: userTasks,
+          assignedTasks: inProgressTasks,
+          allAssignedTasks: allUserTasks,
+          onTaskDrop: handleTaskDrop,
           isSearchMatch,
           isSearchActive: query.length > 0,
         },
       };
     });
 
-    // 2. Construct Edges (from creator to assignee)
+    // 2. Construct Task Pool Node (Statically placed in the top-left corner)
+    const poolNode = {
+      id: 'task-pool-node',
+      type: 'taskPoolNode',
+      position: { x: -350, y: 50 },
+      data: {
+        tasks: poolTasks,
+        onTaskDrop: handleTaskDrop,
+      },
+    };
+
+    const rawNodes = [poolNode, ...userNodes];
+
+    // 3. Construct Edges (from creator to assignee)
     const rawEdges = [];
     visibleTasks.forEach((task) => {
       if (task.created_by && task.assigned_to && task.created_by !== task.assigned_to) {
-        // Ensure both users exist in our active graph
         const hasSource = activeUsers.some(u => u.id === task.created_by);
         const hasTarget = activeUsers.some(u => u.id === task.assigned_to);
 
@@ -531,7 +423,7 @@ const TaskDelegationMapCanvas = () => {
       }
     });
 
-    // 3. Position nodes
+    // 4. Position nodes
     setNodes(prevNodes => {
       if (keepExistingPositions && prevNodes && prevNodes.length > 0) {
         return rawNodes.map(newNode => {
@@ -546,12 +438,12 @@ const TaskDelegationMapCanvas = () => {
     });
 
     setEdges(rawEdges);
-  }, [allUsers, visibleTasks, roleFilter, searchQuery, activeLayout, computePositions, setNodes, setEdges]);
+  }, [allUsers, visibleTasks, poolTasks, roleFilter, searchQuery, activeLayout, computePositions, handleTaskDrop, isTaskInProgress, setNodes, setEdges]);
 
   // Initial and data change layout update
   useEffect(() => {
     applyLayout(activeLayout, true);
-  }, [visibleTasks, allUsers, roleFilter, searchQuery]);
+  }, [visibleTasks, poolTasks, allUsers, roleFilter, searchQuery]);
 
   // Layout change button handler
   const handleSwitchLayout = (newLayout) => {
@@ -633,6 +525,10 @@ const TaskDelegationMapCanvas = () => {
             
             {/* Quick Metrics Bar */}
             <div className="flex items-center gap-2.5 mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
+              <span className="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400">
+                <Inbox className="w-3.5 h-3.5" /> {poolTasks.length} in Pool
+              </span>
+              <span>•</span>
               <span className="flex items-center gap-1 font-medium">
                 <Users className="w-3.5 h-3.5 text-blue-500" /> {allUsers.length} Members
               </span>

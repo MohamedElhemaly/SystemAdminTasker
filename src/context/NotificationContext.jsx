@@ -132,11 +132,24 @@ export const NotificationProvider = ({ children }) => {
 
                 setNotifications(prev => [formattedItem, ...prev.filter(n => n.id !== formattedItem.id)]);
 
-                // Pop dynamic toast alert
-                toast(`🔔 ${actorName}: ${newRecord.message_data?.task_title || 'New notification'}`, {
-                  duration: 4500,
-                  id: `notif-${newRecord.id}`
-                });
+                // Pop dynamic real-time toast alert
+                if (newRecord.type === 'nudge_ack') {
+                  toast(`⚡ ${actorName} nudged you: "${newRecord.message_data?.task_title || 'Team Task'}"`, {
+                    icon: '🔔',
+                    duration: 5000,
+                    id: `notif-${newRecord.id}`
+                  });
+                } else if (newRecord.type === 'task_assigned') {
+                  toast(`📋 ${actorName} assigned you: "${newRecord.message_data?.task_title || 'Task'}"`, {
+                    duration: 4500,
+                    id: `notif-${newRecord.id}`
+                  });
+                } else {
+                  toast(`🔔 ${actorName}: ${newRecord.message_data?.custom_text || newRecord.message_data?.task_title || 'New notification'}`, {
+                    duration: 4500,
+                    id: `notif-${newRecord.id}`
+                  });
+                }
               }
             }
 

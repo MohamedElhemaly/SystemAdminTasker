@@ -5,7 +5,14 @@
 -- 2. Members CANNOT edit task details (title, description, due_date, etc.).
 -- 3. Members can ONLY update task status to 'under_review' for manager review.
 -- 4. Managers & Sub-Managers have unrestricted edit access.
--- ============================================================================
+-- Ensure 'admin' exists in user_role_enum safely if enum is in use
+DO $$
+BEGIN
+    ALTER TYPE user_role_enum ADD VALUE IF NOT EXISTS 'admin';
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+    WHEN undefined_object THEN NULL;
+END $$;
 
 -- 1. Ensure 'status' and dual approval columns exist on public.tasks
 ALTER TABLE public.tasks 
@@ -44,6 +51,7 @@ SET search_path = public, auth, pg_temp
 AS $$
 DECLARE
     v_user_role TEXT;
+    v_is_assigned_to_management BOOLEAN := FALSE;
 BEGIN
     -- Allow internal system operations, database seeding, or migrations without auth.uid()
     IF auth.uid() IS NULL THEN
@@ -60,13 +68,44 @@ BEGIN
         v_user_role := 'member';
     END IF;
 
+    -- Check if this task is assigned to a Manager, Sub-Manager, or Admin
+    IF NEW.assigned_to IS NOT NULL THEN
+        SELECT EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = NEW.assigned_to 
+              AND role::text IN ('manager', 'sub_manager', 'deputy_manager', 'admin')
+        ) INTO v_is_assigned_to_management;
+    END IF;
+
+    IF NOT v_is_assigned_to_management AND NEW.assigned_users IS NOT NULL AND array_length(NEW.assigned_users, 1) > 0 THEN
+        SELECT EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = ANY(NEW.assigned_users) 
+              AND role::text IN ('manager', 'sub_manager', 'deputy_manager', 'admin')
+        ) INTO v_is_assigned_to_management;
+    END IF;
+
+    -- If unassigned, allow manager/sub-manager directly
+    IF NOT v_is_assigned_to_management AND NEW.assigned_to IS NULL AND (NEW.assigned_users IS NULL OR array_length(NEW.assigned_users, 1) IS NULL) THEN
+        IF v_user_role IN ('manager', 'sub_manager', 'deputy_manager', 'admin') THEN
+            v_is_assigned_to_management := TRUE;
+        END IF;
+    END IF;
+
     -- ─────────────────────────────────────────────────────────────
-    -- DUAL APPROVAL INTEGRITY CHECK (Enforced globally)
-    -- Both Manager and Sub-Manager must approve before task can be completed!
+    -- DUAL APPROVAL INTEGRITY CHECK
+    -- Only tasks assigned to regular members require Dual Approval!
+    -- If assigned to a Manager or Sub-Manager: NO APPROVAL NEEDED!
     -- ─────────────────────────────────────────────────────────────
     IF (NEW.is_completed = TRUE OR NEW.status = 'completed') THEN
-        IF (NEW.manager_approved IS NOT TRUE OR NEW.sub_manager_approved IS NOT TRUE) THEN
-            RAISE EXCEPTION 'Dual Approval Required: Both Manager and Sub-Manager must approve the task before completion.';
+        IF v_is_assigned_to_management THEN
+            -- No approval needed! Auto-grant flags for consistency
+            NEW.manager_approved := TRUE;
+            NEW.sub_manager_approved := TRUE;
+        ELSE
+            IF (NEW.manager_approved IS NOT TRUE OR NEW.sub_manager_approved IS NOT TRUE) THEN
+                RAISE EXCEPTION 'Dual Approval Required: Tasks assigned to regular members must be approved by both Manager and Sub-Manager before completion.';
+            END IF;
         END IF;
     END IF;
 
@@ -89,10 +128,13 @@ BEGIN
 
     -- Managers and Sub-Managers (and Deputy Managers / Admins) have full edit permissions
     IF v_user_role IN ('manager', 'sub_manager', 'deputy_manager', 'admin') THEN
-        -- Automatic state sync: When both approved, complete task
-        IF NEW.manager_approved = TRUE AND NEW.sub_manager_approved = TRUE THEN
-            NEW.is_completed := TRUE;
-            NEW.status := 'completed';
+        -- Automatic state sync: When both approved OR assigned to management, complete task
+        IF (NEW.manager_approved = TRUE AND NEW.sub_manager_approved = TRUE) OR v_is_assigned_to_management THEN
+            IF NEW.is_completed = TRUE THEN
+                NEW.status := 'completed';
+                NEW.manager_approved := TRUE;
+                NEW.sub_manager_approved := TRUE;
+            END IF;
         ELSIF NEW.status IN ('to_do', 'in_progress', 'under_review') THEN
             NEW.is_completed := FALSE;
         END IF;
@@ -133,6 +175,21 @@ BEGIN
         IF (NEW.status IS DISTINCT FROM OLD.status) THEN
             IF NEW.status != 'under_review' THEN
                 RAISE EXCEPTION 'Members are not allowed to edit task details';
+            END IF;
+        END IF;
+
+        -- Members cannot change status_id unless status is 'under_review'
+        IF (NEW.status_id IS DISTINCT FROM OLD.status_id) AND (NEW.status != 'under_review') THEN
+            RAISE EXCEPTION 'Members are not allowed to edit task details';
+        END IF;
+
+        -- Members cannot set status_id to a completed state
+        IF (NEW.status_id IS DISTINCT FROM OLD.status_id) THEN
+            IF EXISTS (
+                SELECT 1 FROM public.dropdown_statuses 
+                WHERE id = NEW.status_id AND (is_completed_state = TRUE OR LOWER(name) LIKE '%complete%')
+            ) THEN
+                RAISE EXCEPTION 'Members cannot mark tasks as completed without approval';
             END IF;
         END IF;
 

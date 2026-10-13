@@ -5,6 +5,7 @@ import { Flag, Calendar, CheckSquare, Users, CheckCircle2, Clock, Check, Lock, R
 import { format, isToday, isTomorrow, isPast, parseISO } from 'date-fns';
 import { getAvatarUrl } from '../../lib/avatars';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { TaskTimeTracker } from '../common/TaskTimeTracker';
 import toast from 'react-hot-toast';
 
 export const TaskItem = ({ task }) => {
@@ -12,6 +13,7 @@ export const TaskItem = ({ task }) => {
     selectedTaskId, 
     setSelectedTaskId, 
     toggleTaskCompletion, 
+    isTaskAssignedToManagement,
     approveTask,
     rejectTask,
     updateTask, 
@@ -34,18 +36,25 @@ export const TaskItem = ({ task }) => {
   const isManagerOrSub = isManagerRole || isSubManagerRole || isAdmin;
   const isMember = currentUserRole === 'member';
 
-  const isUnderReview = task.status === 'under_review' || 
-    dropdownStatuses.find(st => st.id === task.status_id)?.name?.toLowerCase() === 'in review';
-
-  const managerApproved = Boolean(task.manager_approved);
-  const subManagerApproved = Boolean(task.sub_manager_approved);
-  const approvalCount = (managerApproved ? 1 : 0) + (subManagerApproved ? 1 : 0);
-
   const assignedUserIds = Array.isArray(task.assigned_users) && task.assigned_users.length > 0
     ? task.assigned_users
     : (task.assigned_to ? [task.assigned_to] : []);
   
   const assignedUsers = assignedUserIds.map(uid => allUsers?.find(u => u.id === uid)).filter(Boolean);
+
+  // If a task is assigned to a manager or sub-manager, NO APPROVAL NEEDED!
+  const isAssignedToManagement = isTaskAssignedToManagement 
+    ? isTaskAssignedToManagement(task)
+    : assignedUsers.some(u => ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(u.role));
+
+  const isUnderReview = !isAssignedToManagement && (
+    task.status === 'under_review' || 
+    dropdownStatuses.find(st => st.id === task.status_id)?.name?.toLowerCase() === 'in review'
+  );
+
+  const managerApproved = Boolean(task.manager_approved);
+  const subManagerApproved = Boolean(task.sub_manager_approved);
+  const approvalCount = (managerApproved ? 1 : 0) + (subManagerApproved ? 1 : 0);
   const assignedUser = assignedUsers[0];
   const assigneeAvatarUrl = assignedUser ? getAvatarUrl(assignedUser.avatar_id, assignedUser.full_name || assignedUser.email) : getAvatarUrl('avatar-1', 'Unknown');
 
@@ -353,15 +362,28 @@ export const TaskItem = ({ task }) => {
             </span>
           )}
 
-          {/* Subtasks Counter Badge */}
-          {task.subtasks && task.subtasks.length > 0 && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700/50">
-              <CheckSquare className="w-3 h-3" />
-              <span>
-                {task.subtasks.filter(s => s.is_completed).length}/{task.subtasks.length}
+          {/* Subtasks / Checklist Counter Badge */}
+          {(() => {
+            const list = task.task_checklists || task.subtasks || [];
+            if (list.length === 0) return null;
+            const completed = list.filter(s => s.is_completed).length;
+            const isAllDone = completed === list.length;
+            return (
+              <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md border ${
+                isAllDone
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                  : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700/50'
+              }`}>
+                <CheckSquare className="w-3 h-3" />
+                <span>
+                  {completed}/{list.length}
+                </span>
               </span>
-            </span>
-          )}
+            );
+          })()}
+
+          {/* Time Tracking (Play/Pause & Accumulated Duration Badge) */}
+          <TaskTimeTracker task={task} />
 
           {/* Assignee Avatar / Avatars Stack */}
           {assignedUsers.length > 0 && (

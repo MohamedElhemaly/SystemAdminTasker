@@ -6,10 +6,11 @@ import { getAvatarUrl } from '../../lib/avatars';
 import { 
   ShieldAlert, Users, Tag, Plus, Trash2, CheckCircle2, 
   ShieldCheck, Lock, UserCheck, Settings, Folder, FileType, Bookmark,
-  UserPlus, Loader2, X
+  UserPlus, Loader2, X, FileSpreadsheet
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ModernDropdown } from '../common/ModernDropdown';
+import { TeamProductivityReport } from './TeamProductivityReport';
 
 export const AdminDashboard = () => {
   const { profile, isDemoMode } = useAuth();
@@ -72,9 +73,10 @@ export const AdminDashboard = () => {
   const [ackFilter, setAckFilter] = useState('all'); // 'all' | 'finished' | 'working'
 
   const currentRole = profile?.role || 'manager';
+  const isManagerOrSub = ['manager', 'sub_manager', 'deputy_manager', 'admin'].includes(currentRole);
 
-  // Security Gate: Protected route for Manager role ONLY
-  if (currentRole !== 'manager') {
+  // Security Gate: Protected route for Manager & Sub-Manager roles
+  if (!isManagerOrSub) {
     return (
       <div className="flex-1 h-screen bg-slate-100 dark:bg-[#18181c] flex items-center justify-center p-6 text-slate-900 dark:text-slate-100 select-none">
         <div className="max-w-md w-full p-6 bg-white dark:bg-[#1f1f23] border border-red-200 dark:border-red-500/30 rounded-2xl shadow-xl text-center space-y-4">
@@ -82,9 +84,9 @@ export const AdminDashboard = () => {
             <Lock className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Access Denied: Manager Role Required</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Access Denied: Manager Access Required</h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              The Super-Admin Dashboard is strictly restricted to system <strong>Managers (المراجع)</strong>. You are currently logged in as a <code>{currentRole}</code>.
+              The Admin Dashboard & Productivity Reports are restricted to system <strong>Managers and Sub-Managers</strong>. You are currently logged in as a <code>{currentRole}</code>.
             </p>
           </div>
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-transparent">
@@ -332,6 +334,16 @@ export const AdminDashboard = () => {
           >
             <Bookmark className="w-4 h-4" />
             <span>Member Tags</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'reports' ? 'border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300' : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            <span>Productivity Report (.xlsx)</span>
           </button>
         </div>
 
@@ -1048,6 +1060,11 @@ export const AdminDashboard = () => {
               );
             })()}
           </div>
+        )}
+
+        {/* Tab 8: Team Productivity & Time-Tracking Report */}
+        {activeTab === 'reports' && (
+          <TeamProductivityReport />
         )}
 
       </div>

@@ -27,7 +27,9 @@ export const NotificationPopover = ({ isOpen, onClose, setActiveView }) => {
     allTasks, 
     toggleAcknowledgement, 
     refreshTasks, 
-    fetchTasks 
+    fetchTasks,
+    activeTimeLog,
+    stopTimer
   } = useTasks();
   const [activeTab, setActiveTab] = useState('notifications'); // 'notifications' | 'activities'
   const popoverRef = useRef(null);
@@ -99,10 +101,15 @@ export const NotificationPopover = ({ isOpen, onClose, setActiveView }) => {
             }, { onConflict: 'task_id,user_id' });
         }
 
-        // 2. Mark notification as read
+        // 2. Stop running timer if active on this task
+        if (activeTimeLog && activeTimeLog.task_id === taskId && typeof stopTimer === 'function') {
+          await stopTimer(taskId, 'ready');
+        }
+
+        // 3. Mark notification as read
         await markAsRead(notif.id);
 
-        // 3. Trigger global store to fetchTasks() so the main UI updates instantly
+        // 4. Trigger global store to fetchTasks() so the main UI updates instantly
         if (typeof fetchTasks === 'function') {
           await fetchTasks();
         } else if (typeof refreshTasks === 'function') {
